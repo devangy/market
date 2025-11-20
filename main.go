@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -43,21 +44,46 @@ func main() {
 		},
 	}
 
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(5 * time.Second)
 
 	defer ticker.Stop()
 
 	// channel for receiving data
-	json_chan := make(chan string, 200)
+	json_chan := make(chan any, 200)
+
+	// var wg sync.WaitGroup
+	// wg.Add(1)
 
 	go func() {
+
+		// defer wg.Done()
+
+		// opening a file with append mode for writing data continuously
+		// flags append at the end, create if file dont exist and write only to file
+		// 0644 unix mode file permision read write execute
+		// dir, err := os.Getwd()
+		dir, err := os.Getwd()
+
+		if err != nil {
+			panic(err)
+		}
+		file, err := os.OpenFile(filepath.Join(dir, "output.json"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			log.Fatalln("Err opening file:", err)
+		}
+
+		defer file.Close()
+
+		// json encoder for writing directly to file
+		encoder := json.NewEncoder(file)
+		encoder.SetIndent("", " ") // make json pretty
+
 		for chdata := range json_chan {
-			fmt.Println("json-channel", chdata)
-			os.WriteFile("data", []byte(chdata), 0666)
-			if err != nil {
-				log.Fatal("Error writing data to file", err)
+			if err = encoder.Encode(chdata); err != nil {
+				log.Fatalln("err encoding data to file:", err)
 			}
 		}
+		fmt.Println("Finished writing data to output file")
 	}()
 
 	for range ticker.C {
@@ -65,9 +91,10 @@ func main() {
 		go poly(poly_events_API, apiClient, json_chan)
 	}
 
+	// wg.Wait()
 }
 
-func kalshi(events_API string, apiClient *http.Client, json_chan chan string) {
+func kalshi(events_API string, apiClient *http.Client, json_chan chan any) {
 	// new request
 	req, err := http.NewRequest("GET", events_API, nil)
 	if err != nil {
@@ -127,18 +154,18 @@ func kalshi(events_API string, apiClient *http.Client, json_chan chan string) {
 	}
 
 	// pretty print json
-	prettyjson, err := json.MarshalIndent(kdata, " ", "  ")
-	if err != nil {
-		log.Fatal("Unable to prettyjson")
-		panic(err)
-	}
+	// prettyjson, err := json.MarshalIndent(kdata, " ", "  ")
+	// if err != nil {
+	// 	log.Fatal("Unable to prettyjson")
+	// 	panic(err)
+	// }
 
 	// fmt.Println("res:", string(prettyjson))
 
-	json_chan <- string(prettyjson)
+	json_chan <- kdata
 }
 
-func poly(events_api string, apiClient *http.Client, json_chan chan string) {
+func poly(events_api string, apiClient *http.Client, json_chan chan any) {
 	req, err := http.NewRequest("GET", events_api, nil)
 	if err != nil {
 		log.Fatal("err making poly GET req", err)
@@ -184,17 +211,17 @@ func poly(events_api string, apiClient *http.Client, json_chan chan string) {
 		if err = json.Unmarshal(body, &pdata); err != nil {
 			log.Fatal("err unmarshal poly:", err)
 		}
-		prettyjson, err := json.MarshalIndent(pdata, " ", "  ")
-		if err != nil {
-			log.Fatal("err marshalIndent:", err)
-		}
-		log.Println("poly", string(prettyjson))
-		fmt.Println("Received", string(prettyjson))
+		// prettyjson, err := json.MarshalIndent(pdata, " ", "  ")
+		// if err != nil {
+		// 	log.Fatal("err marshalIndent:", err)
+		// }
+		// log.Println("poly", string(prettyjson))
+		// fmt.Println("Received", string(prettyjson))
 		fmt.Println("fetched at:", time.Now())
 
 		time.Sleep(time.Second)
 
-		// json_chan <- string(prettyjson)
+		json_chan <- pdata
 	}
 
 }
