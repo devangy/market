@@ -45,7 +45,7 @@ func Bot(jsonCh <-chan any) {
 	// bot handler to handle req
 	bh, _ := th.NewBotHandler(bot, updates)
 
-	defer func() { _ = bh.Stop() }()
+	defer bh.Stop()
 
 	// Register new handler with match on command `/start`
 	bh.HandleMessage(func(ctx *th.Context, message telego.Message) error {
@@ -63,6 +63,9 @@ func Bot(jsonCh <-chan any) {
 	bh.HandleCallbackQuery(func(ctx *th.Context, query telego.CallbackQuery) error {
 
 		for message := range jsonCh {
+
+			fmt.Println("message", message)
+
 			_, _ = ctx.Bot().SendMessage(ctx, tu.Messagef(
 				tu.ID(query.Message.GetChat().ID),
 				"Received: %v", message,

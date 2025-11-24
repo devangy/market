@@ -24,7 +24,7 @@ profile.cov
 go.work
 go.work.sum
 
-output.json
+output.jsonl
 
 # env file
 .env

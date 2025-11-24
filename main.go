@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -61,15 +64,14 @@ func main() {
 		// 0644 unix mode file permision read write execute
 		// dir, err := os.Getwd()
 		dir, err := os.Getwd()
-
 		if err != nil {
 			panic(err)
 		}
+
 		file, err := os.OpenFile(filepath.Join(dir, "output.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			log.Fatalln("Err opening file:", err)
 		}
-
 		defer file.Close()
 
 		// json encoder for writing directly to file
@@ -79,8 +81,51 @@ func main() {
 		// handler := slog.NewTextHandler(os.Stdout, nil)
 		// logger := slog.New(handler)
 		// slog.SetDefault(logger)
+		// buff scanner for scanning each line
+		scanner := bufio.NewScanner(file)
+
+		// map for storing hash of string with boolean
+		seenHash := make(map[string]bool)
+
+		fmt.Println()
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			fmt.Println("line", line)
+			// hash line
+			hashLine := sha256.Sum256([]byte(line))
+			stringHash := hex.EncodeToString(hashLine[:])
+
+			fmt.Println("hashLine", hashLine)
+			fmt.Println("stringHash", stringHash)
+			// check in hashmap if seen Hash before
+			seenHash[stringHash] = true
+
+		}
 
 		for chdata := range json_chan {
+
+			jsonBytes, err := json.Marshal(chdata)
+			if err != nil {
+				panic(1)
+			}
+
+			// conv raw bytes to string
+			jsonLine := string(jsonBytes)
+
+			// hash each line
+			hashLine := sha256.Sum256([]byte(jsonLine))
+			// convert hashed lines back to string
+			stringHash := hex.EncodeToString(hashLine[:])
+
+			if seenHash[stringHash] {
+				fmt.Println("Duplicate found")
+				continue
+			}
+
+			// mark hash seen
+			seenHash[stringHash] = true
+
 			if err = encoder.Encode(chdata); err != nil {
 				log.Fatalln("err encoding data to file:", err)
 			}
@@ -99,73 +144,87 @@ func main() {
 
 func kalshi(events_API string, apiClient *http.Client, json_chan chan any) {
 	// new request
-
-	req, err := http.NewRequest("GET", events_API, nil)
-	if err != nil {
-		log.Fatalf("Err making get req: %v", err)
-	}
-
-	// query params
 	//
-	params := req.URL.Query()
-	params.Add("limit", "5")
-	params.Add("status", "open")
-	params.Add("with_nested_markets", "true")
-
-	req.URL.RawQuery = params.Encode() // form full URL to make call\
-
-	fmt.Println(req.URL.Query())
-
-	res, err := apiClient.Do(req)
-	fmt.Println("url", res.Request.URL)
-	if err != nil {
-		log.Fatalf("Err getting res: %v ", err)
-	}
-
-	defer res.Body.Close() // close connection before exiting
-	// read from the Body
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		log.Fatal("Error reading from res Body")
-	}
-
-	type Market struct {
-		// OpenInterest int `json:"open_interest"`
-		Liquidity       int    `json:"liquidity"`
-		Volume          int    `json:"volume"`
-		No_ask_dollars  int    `json:"no_ask"`
-		Yes_ask_dollars int    `json:"yes_yes"`
-		Status          string `json:"status"`
-	}
-
-	type Event struct {
-		Title        string   `json:"title"`
-		EventTicker  string   `json:"event_ticker"`
-		SeriesTicker string   `json:"series_ticker"`
-		Category     string   `json:"category"`
-		Markets      []Market `json:"markets"`
-	}
-
-	// initial data struct
-	type kmarketdata struct {
-		Events []Event
-		Cursor string `json:"cursor"`
-	}
-	var kdata kmarketdata
-
-	// json.NewDecoder(res.Body).Decode(&kdata)
-
-	// unmarshall
-	if err = json.Unmarshal(body, &kdata); err != nil {
-		log.Fatalf("Error unmarshalling: %v", err)
-	}
-	fmt.Println("RECEIVED CURSOR:", kdata.Cursor)
 	cursor := ""
-	cursor = kdata.Cursor
-	params.Add("cursor", cursor)
 
-	json_chan <- kdata
+	for {
+		ptr := &cursor
+
+		req, err := http.NewRequest("GET", events_API, nil)
+		if err != nil {
+			log.Fatalf("Err making get req: %v", err)
+		}
+
+		// query params
+		params := req.URL.Query()
+		params.Add("limit", "5")
+		params.Add("status", "open")
+		params.Add("with_nested_markets", "true")
+		params.Add("cursor", cursor)
+
+		req.URL.RawQuery = params.Encode() // form full URL to make call\
+
+		fmt.Println(req.URL.Query())
+
+		res, err := apiClient.Do(req)
+		fmt.Println("url", res.Request.URL)
+		if err != nil {
+			log.Fatalf("Err getting res: %v ", err)
+		}
+
+		defer res.Body.Close() // close connection before exiting
+		// read from the Body
+
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			log.Fatal("Error reading from res Body")
+		}
+
+		// type Market struct {
+		// 	// OpenInterest int `json:"open_interest"`
+		// 	Liquidity       int    `json:"liquidity"`
+		// 	Volume          int    `json:"volume"`
+		// 	No_ask_dollars  int    `json:"no_ask"`
+		// 	Yes_ask_dollars int    `json:"yes_yes"`
+		// 	Status          string `json:"status"`
+		// }
+
+		type Event struct {
+			Title        string `json:"title"`
+			EventTicker  string `json:"event_ticker"`
+			SeriesTicker string `json:"series_ticker"`
+			Category     string `json:"category"`
+		}
+
+		// initial data struct
+		type kmarketdata struct {
+			Events []Event
+			Cursor string `json:"cursor"`
+		}
+		var kdata kmarketdata
+
+		// if err := json.NewDecoder(res.Body).Decode(&kdata); err != nil {
+		// 	log.Fatalf("Error decoding: %v", err)
+
+		// }
+
+		if err = json.Unmarshal(body, &kdata); err != nil {
+			log.Fatalf("Error unmarshalling: %v", err)
+		}
+		fmt.Println("RECEIVED CURSOR:", kdata.Cursor)
+		fmt.Println("Data:", kdata)
+
+		*ptr = kdata.Cursor
+		fmt.Println("ptr", ptr)
+		cursor = kdata.Cursor
+		fmt.Println("cursor", cursor)
+
+		json_chan <- kdata
+
+		time.Sleep(5 * time.Second)
+
+	}
+
 }
 
 func poly(events_api string, apiClient *http.Client, json_chan chan any) {
@@ -175,6 +234,8 @@ func poly(events_api string, apiClient *http.Client, json_chan chan any) {
 	}
 
 	// structs
+	//
+
 	type polymarketdata struct {
 		Title    string  `json:"title"`
 		Category string  `json:"category"`
