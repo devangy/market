@@ -332,6 +332,36 @@ func processJson(json_chan chan any) {
 	// empty hashmap for keeping track of seen hashes with struct as it takes 0 bytes for storage and we care about only the key
 	seenMap := make(map[uint64]struct{})
 
+	// load already seen hashes into hashmap so that dupes dont get forwarded
+	binFile, err := os.Open("hashes.bin")
+	if err != nil {
+		log.Fatal("failed to open bin file", err)
+
+	}
+	defer binFile.Close()
+
+	for {
+
+		var buffBin [8]byte
+
+		_, err = io.ReadFull(binFile, buffBin[:])
+		if err != nil {
+			log.Print("err reading bin file:", err)
+		}
+		if err == io.EOF {
+			log.Print("EOF Reached!")
+			break
+		}
+
+		var value uint64
+		value = binary.BigEndian.Uint64(buffBin[:])
+		// load hashes in hashmap
+
+		log.Print("value", value)
+
+		log.Print("buffBin", buffBin)
+	}
+
 	// start processing json
 	for jdata := range json_chan {
 
@@ -354,12 +384,14 @@ func processJson(json_chan chan any) {
 
 		// if hash seen before jump to next item
 		if _, exists := seenMap[jsonHashValue]; exists {
-			log.Print("duplicate found")
+			log.Print("Duplicate found skipping to next")
 			continue
 		}
 
 		// allocate buffer of size 8 bytes
 		var buff [8]byte
+
+		log.Print("empty buff", buff)
 
 		// put the hash value in the buffer in BigEndian byte order
 		binary.BigEndian.PutUint64(buff[:], jsonHashValue)
@@ -370,7 +402,8 @@ func processJson(json_chan chan any) {
 		// a way of creating a set data type in Go
 		seenMap[jsonHashValue] = struct{}{}
 
-		_, err = file.WriteString(string(buff[:]))
+		bywritten, err := file.Write(buff[:])
+		log.Print("bytes written: ", bywritten)
 		if err != nil {
 			log.Fatal("failed to write buffer to file", err)
 		}
