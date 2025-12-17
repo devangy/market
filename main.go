@@ -51,11 +51,14 @@ func main() {
 	// channel where both api will send the json
 	json_chan := make(chan any, 200)
 
+	// Teleg channel for clean and filtered data according to logic applied
+	tgEventC := make(chan any, 200)
+
 	// ctx := context.Background()
 
-	// go Bot()
+	go processJson(json_chan, tgEventC)
 
-	go processJson(json_chan)
+	go Bot(tgEventC)
 
 	// go func() {
 
@@ -312,7 +315,7 @@ func poly(events_api string, apiClient *http.Client, json_chan chan any) {
 	}
 }
 
-func processJson(json_chan chan any) {
+func processJson(json_chan chan any, tgEventsC chan any) {
 	// get current dir path
 	//
 
@@ -340,6 +343,8 @@ func processJson(json_chan chan any) {
 	}
 	defer binFile.Close()
 
+	// channel for sending only freshdata
+
 	for {
 
 		var buffBin [8]byte
@@ -356,6 +361,7 @@ func processJson(json_chan chan any) {
 		var value uint64
 		value = binary.BigEndian.Uint64(buffBin[:])
 		// load hashes in hashmap
+		seenMap[value] = struct{}{}
 
 		log.Print("value", value)
 
@@ -387,6 +393,9 @@ func processJson(json_chan chan any) {
 			log.Print("Duplicate found skipping to next")
 			continue
 		}
+
+		// send only fresh data to Tg bot
+		tgEventsC <- jdata
 
 		// allocate buffer of size 8 bytes
 		var buff [8]byte

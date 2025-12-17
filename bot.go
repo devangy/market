@@ -1,10 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/mymmrac/telego"
@@ -12,7 +10,7 @@ import (
 	tu "github.com/mymmrac/telego/telegoutil"
 )
 
-func Bot() {
+func Bot(tgEventC chan any) {
 
 	botToken := os.Getenv("BOT_TOKEN")
 	if botToken == "" {
@@ -64,28 +62,11 @@ func Bot() {
 	// Register new handler with match on a call back query with data equal to `go` and non-nil message
 	bh.HandleCallbackQuery(func(ctx *th.Context, query telego.CallbackQuery) error {
 
-		// for message := range jsonCh {
-
-		// 	fmt.Println("message", message)
-		// 	_, _ = ctx.Bot().SendMessage(ctx, tu.Messagef(
-		// 		tu.ID(query.Message.GetChat().ID),
-		// 		"Received: %v", message,
-		// 	))
-		// }
-
-		scanFile, err := os.Open("output.jsonl")
-		if err != nil {
-			log.Fatalln("err opening scanFile", err)
-		}
-		scanner := bufio.NewScanner(scanFile)
-		defer scanFile.Close()
-
-		for scanner.Scan() {
-			line := scanner.Bytes()
-			fmt.Println("line", line)
+		for event := range tgEventC {
+			fmt.Print("tgChanEvents", event)
 			_, _ = ctx.Bot().SendMessage(ctx, tu.Messagef(
 				tu.ID(query.Message.GetChat().ID),
-				"Received: %v", string(line),
+				"Received: %v", event,
 			))
 		}
 		// }()
