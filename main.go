@@ -32,8 +32,10 @@ func main() {
 	entryPoint := os.Getenv("entryPoint")
 
 	// Markets
-	kalshi_events_API := os.Getenv("kalshi_events_API")
-	poly_events_API := os.Getenv("poly_events_API")
+	// kalshi_events_API := os.Getenv("kalshi_events_API")
+	// poly_events_API := os.Getenv("poly_events_API")
+	poly_trades_API := os.Getenv("poly_trades_API")
+	kalshi_trades_API := os.Getenv("kalshi_trades_API")
 
 	proxy, err := url.Parse(fmt.Sprintf("http://user-%s-country-%s:%s@%s", username, country, password, entryPoint))
 	if err != nil {
@@ -58,102 +60,13 @@ func main() {
 
 	go processJson(json_chan, tgEventC)
 
-	go Bot(tgEventC)
+	// go Bot(tgEventC)
 
-	// go func() {
+	// go kalshi(kalshi_events_API, apiClient, json_chan)
+	// go poly(poly_events_API, apiClient, json_chan)
+	go polyTrades(poly_trades_API, apiClient)
+	go kalshiTrades(kalshi_trades_API, apiClient)
 
-	// 	// opening a file with append mode for writing data continuously
-	// 	// flags append at the end, create if file dont exist and write only to file
-	// 	// 0644 unix mode file permision read write execute
-	// 	// dir, err := os.Getwd()
-	// 	dir, err := os.Getwd()
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-
-	// 	file, err := os.OpenFile(filepath.Join(dir, "output.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	// 	if err != nil {
-	// 		log.Fatalln("Err opening file:", err)
-	// 	}
-	// 	defer file.Close()
-
-	// 	// slog.SetDefault(logger)
-
-	// 	// open file again for scannning lines
-	// 	scanFile, err := os.Open("output.jsonl")
-	// 	if err != nil {
-	// 		log.Fatalln("err opening scanFile", err)
-	// 	}
-	// 	defer scanFile.Close()
-
-	// 	// scanner := bufio.NewScanner(scanFile)
-
-	// 	// map for storing hash of string with boolean
-	// 	seenHash := make(map[[32]byte]bool)
-
-	// 	jdecoder := json.NewDecoder(scanFile)
-
-	// 	for {
-	// 		err := jdecoder.Decode()
-	// 	}
-
-	// 	for scanner.Scan() {
-	// 		line := scanner.Text()
-	// 		fmt.Println("line", line)
-	// 		// hashing each line using sha256
-	// 		hashLine := sha256.Sum256([]byte(line))
-	// 		// encoding the hash back to string for checking if it exists in our map
-	// 		// stringHash := hex.EncodeToString(hashLine[:])
-
-	// 		fmt.Println("hashLine", hashLine)
-	// 		// fmt.Println("stringHash", stringHash)
-	// 		// check in hashmap if seen Hash before
-	// 		seenHash[hashLine] = true
-	// 	}
-
-	// 	for chdata := range json_chan {
-
-	// 		jsonBytes, err := json.Marshal(chdata)
-	// 		if err != nil {
-	// 			panic(1)
-	// 		}
-
-	// 		// conv raw bytes to string
-	// 		jsonLine := string(jsonBytes)
-	// 		// hash each line
-	// 		hashBytes := sha256.Sum256([]byte(jsonLine))
-	// 		// convert hashed lines back to string
-	// 		// stringHash := hex.EncodeToString(hashLine[:])
-	// 		// if the hash is in our map print and move to next iteration and check again
-	// 		if seenHash[hashBytes] {
-	// 			fmt.Println("Duplicate found")
-	// 			continue
-	// 		}
-
-	// 		// mark hash seen
-	// 		seenHash[hashBytes] = true
-	// 		// fmt.Println("map:", seenHash[stringHash])
-
-	// 		// json encoder for writing directly to file
-	// 		// Write the bytes we already have + a newline
-	// 		if _, err := file.Write(jsonBytes); err != nil {
-	// 			log.Println("Write error:", err)
-	// 		}
-	// 		if _, err := file.WriteString("\n"); err != nil {
-	// 			log.Println("Write error:", err)
-	// 		}
-	// 		// slog.Info("LOG", chdata)
-
-	// 	}
-	// 	fmt.Println("Finished writing data to output file")
-	// }()
-
-	// var wg sync.WaitGroup
-	// wg.Add(2)
-	go kalshi(kalshi_events_API, apiClient, json_chan)
-	go poly(poly_events_API, apiClient, json_chan)
-	// wg.Done()
-	// block main forever so program doesnt exit
 	select {}
 
 }
@@ -260,7 +173,7 @@ func poly(events_api string, apiClient *http.Client, json_chan chan any) {
 	for range ticker.C {
 		req, err := http.NewRequest("GET", events_api, nil)
 		if err != nil {
-			log.Fatal("err making poly GET req", err)
+			log.Fatal("err making poly GET request [events]", err)
 		}
 
 		// structs
@@ -417,5 +330,59 @@ func processJson(json_chan chan any, tgEventsC chan any) {
 			log.Fatal("failed to write buffer to file", err)
 		}
 
+	}
+}
+
+func polyTrades(api string, apiClient *http.Client) {
+	ticker := time.NewTicker(150 * time.Millisecond)
+
+	defer ticker.Stop()
+
+	for range ticker.C {
+		req, err := http.NewRequest("GET", api, nil)
+		if err != nil {
+			log.Fatal("Err making request poly [trades]")
+		}
+
+		res, err := apiClient.Do(req)
+		if err != nil {
+			log.Fatal("Failed to get a response", err)
+		}
+		defer res.Body.Close()
+
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			log.Fatal("Failed to parse body", err)
+		}
+
+		log.Print("ptrades: ", string(body))
+
+	}
+}
+
+func kalshiTrades(api string, apiClient *http.Client) {
+	ticker := time.NewTicker(150 * time.Millisecond)
+
+	defer ticker.Stop()
+
+	for range ticker.C {
+		req, err := http.NewRequest("GET", api, nil)
+		if err != nil {
+			log.Fatal("Err making request kalshi [trades]")
+		}
+
+		res, err := apiClient.Do(req)
+		if err != nil {
+			log.Fatal("Failed to get a response kalshi [trades]", err)
+		}
+
+		defer res.Body.Close()
+
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			log.Fatal("Failed to parse body", err)
+		}
+
+		log.Print("ktrades: ", string(body))
 	}
 }
