@@ -35,7 +35,7 @@ func main() {
 	// kalshi_events_API := os.Getenv("kalshi_events_API")
 	// poly_events_API := os.Getenv("poly_events_API")
 	poly_trades_API := os.Getenv("poly_trades_API")
-	kalshi_trades_API := os.Getenv("kalshi_trades_API")
+	// kalshi_trades_API := os.Getenv("kalshi_trades_API")
 
 	proxy, err := url.Parse(fmt.Sprintf("http://user-%s-country-%s:%s@%s", username, country, password, entryPoint))
 	if err != nil {
@@ -44,7 +44,7 @@ func main() {
 
 	// creating a struct instance using a struct literal in memory
 	apiClient := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: 15 * time.Second,
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(proxy),
 		},
@@ -65,7 +65,7 @@ func main() {
 	// go kalshi(kalshi_events_API, apiClient, json_chan)
 	// go poly(poly_events_API, apiClient, json_chan)
 	go polyTrades(poly_trades_API, apiClient)
-	go kalshiTrades(kalshi_trades_API, apiClient)
+	// go kalshiTrades(kalshi_trades_API, apiClient)
 
 	select {}
 
@@ -350,13 +350,51 @@ func polyTrades(api string, apiClient *http.Client) {
 		}
 		defer res.Body.Close()
 
-		body, err := io.ReadAll(res.Body)
-		if err != nil {
-			log.Fatal("Failed to parse body", err)
+		type Trade struct {
+			ProxyWallet           string  `json:"proxyWallet"`
+			Side                  string  `json:"side"`
+			Asset                 string  `json:"asset"`
+			ConditionID           string  `json:"conditionId"`
+			Size                  float64 `json:"size"`
+			Price                 float64 `json:"price"`
+			Timestamp             int64   `json:"timestamp"`
+			Title                 string  `json:"title"`
+			Slug                  string  `json:"slug"`
+			Icon                  string  `json:"icon"`
+			EventSlug             string  `json:"eventSlug"`
+			Outcome               string  `json:"outcome"`
+			OutcomeIndex          int     `json:"outcomeIndex"`
+			Name                  string  `json:"name"`
+			Pseudonym             string  `json:"pseudonym"`
+			Bio                   string  `json:"bio"`
+			ProfileImage          string  `json:"profileImage"`
+			ProfileImageOptimized string  `json:"profileImageOptimized"`
+			TransactionHash       string  `json:"transactionHash"`
 		}
 
-		log.Print("ptrades: ", string(body))
+		var trades []Trade
 
+		json.NewDecoder(res.Body).Decode(&trades)
+		if err != nil {
+			log.Fatal("Failed to decode json polytrades", err)
+		}
+
+		// prettyJson, _ := json.MarshalIndent(trades, "", "  ")
+		// log.Print("ptrades: ", string(prettyJson))
+
+		left := 0
+		for right := 0; right < len(trades); right++ {
+			// window invalidated remove the trades outside our time window
+			for left < right && time.UnixMilli(trades[right].Timestamp).Sub(time.UnixMilli(trades[left].Timestamp)) > 1*time.Minute {
+				left++
+			}
+
+			value := trades[right].Size * trades[right].Price
+			if value >= 2000 {
+				prettyJson, _ := json.MarshalIndent(trades[right], "", "  ")
+				fmt.Print("LT ❤️:", string(prettyJson))
+			}
+		}
 	}
 }
 
