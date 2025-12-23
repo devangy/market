@@ -238,7 +238,7 @@ func processJson(json_chan chan any, tgEventsC chan any) {
 	}
 
 	// create a file or open existing output.jsonl file for writing data
-	file, err := os.OpenFile(filepath.Join(directory, "hashes.bin"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	file, err := os.OpenFile(filepath.Join(directory, "hashes.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		log.Fatal("Unable opening file for writing", err)
 	}
@@ -334,9 +334,11 @@ func processJson(json_chan chan any, tgEventsC chan any) {
 }
 
 func polyTrades(api string, apiClient *http.Client) {
-	ticker := time.NewTicker(150 * time.Millisecond)
+	ticker := time.NewTicker(100 * 1000)
 
 	defer ticker.Stop()
+
+	ptradesF, _ := os.OpenFile("polytrades.jsonl", os.O_RDWR|os.O_CREATE, 0644)
 
 	for range ticker.C {
 		req, err := http.NewRequest("GET", api, nil)
@@ -349,6 +351,8 @@ func polyTrades(api string, apiClient *http.Client) {
 			log.Fatal("Failed to get a response", err)
 		}
 		defer res.Body.Close()
+
+		log.Print("status", res.StatusCode)
 
 		type Trade struct {
 			ProxyWallet           string  `json:"proxyWallet"`
@@ -374,25 +378,35 @@ func polyTrades(api string, apiClient *http.Client) {
 
 		var trades []Trade
 
-		json.NewDecoder(res.Body).Decode(&trades)
+		err = json.NewDecoder(res.Body).Decode(&trades)
 		if err != nil {
 			log.Fatal("Failed to decode json polytrades", err)
 		}
 
-		// prettyJson, _ := json.MarshalIndent(trades, "", "  ")
-		// log.Print("ptrades: ", string(prettyJson))
+		tradesMap := make(map[string]struct{})
 
 		left := 0
 		for right := 0; right < len(trades); right++ {
+
+			const windowMillisec = int64(120 * 1000)
+
 			// window invalidated remove the trades outside our time window
-			for left < right && time.UnixMilli(trades[right].Timestamp).Sub(time.UnixMilli(trades[left].Timestamp)) > 1*time.Minute {
+			for left <= right && (trades[right].Timestamp-trades[left].Timestamp) > windowMillisec {
 				left++
 			}
 
-			value := trades[right].Size * trades[right].Price
-			if value >= 2000 {
-				prettyJson, _ := json.MarshalIndent(trades[right], "", "  ")
-				fmt.Print("LT ❤️:", string(prettyJson))
+			// map returns value and boolean for key present or not
+			if _, exists := tradesMap[trades[right].TransactionHash]; exists {
+				continue
+			}
+
+			tradeSum := trades[right].Size * trades[right].Price
+			if tradeSum >= 2000 {
+				tradesMap[trades[right].TransactionHash] = struct{}{}
+
+				prettyJson, _ := json.MarshalIndent(trades[right], "", "")
+				log.Println("LT ❤️:", string(prettyJson))
+				ptradesF.WriteString(string(prettyJson) + "\n")
 			}
 		}
 	}
