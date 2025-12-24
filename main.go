@@ -64,7 +64,7 @@ func main() {
 
 	// go kalshi(kalshi_events_API, apiClient, json_chan)
 	// go poly(poly_events_API, apiClient, json_chan)
-	go polyTrades(poly_trades_API, apiClient)
+	polyTrades(poly_trades_API, apiClient)
 	// go kalshiTrades(kalshi_trades_API, apiClient)
 
 	select {}
@@ -80,85 +80,87 @@ func kalshi(events_API string, apiClient *http.Client, json_chan chan any) {
 	cursor := ""
 
 	for range ticker.C {
-		// ptr := &cursor
 
-		req, err := http.NewRequest("GET", events_API, nil)
-		if err != nil {
-			log.Fatalf("Err making get req: %v", err)
-		}
+		go func() {
+			req, err := http.NewRequest("GET", events_API, nil)
+			if err != nil {
+				log.Fatalf("Err making get req: %v", err)
+			}
 
-		// query params
-		params := req.URL.Query()
-		params.Add("limit", "200")
-		params.Add("status", "open")
-		params.Add("with_nested_markets", "true")
-		params.Add("cursor", cursor)
+			// query params
+			params := req.URL.Query()
+			params.Add("limit", "200")
+			params.Add("status", "open")
+			params.Add("with_nested_markets", "true")
+			params.Add("cursor", cursor)
 
-		req.URL.RawQuery = params.Encode() // form full URL to make call\
+			req.URL.RawQuery = params.Encode() // form full URL to make call\
 
-		fmt.Println(req.URL.Query())
-		res, err := apiClient.Do(req)
-		// fmt.Println("url", res.Request.URL)
-		if err != nil {
-			log.Printf("Err getting res: %v", err)
-			continue // Skip this loop iteration, try again next tick
-		}
+			fmt.Println(req.URL.Query())
+			res, err := apiClient.Do(req)
+			// fmt.Println("url", res.Request.URL)
+			if err != nil {
+				log.Printf("Err getting res: %v", err)
+				continue // Skip this loop iteration, try again next tick
+			}
 
-		defer res.Body.Close() // close connection before exiting
-		// read from the Body
+			defer res.Body.Close() // close connection before exiting
+			// read from the Body
 
-		body, err := io.ReadAll(res.Body)
-		if err != nil {
-			log.Panic("Error reading from res Body:", err)
-		}
+			body, err := io.ReadAll(res.Body)
+			if err != nil {
+				log.Panic("Error reading from res Body:", err)
+			}
 
-		// type Market struct {
-		// 	// OpenInterest int `json:"open_interest"`
-		// 	Liquidity       int    `json:"liquidity"`
-		// 	Volume          int    `json:"volume"`
-		// 	No_ask_dollars  int    `json:"no_ask"`
-		// 	Yes_ask_dollars int    `json:"yes_yes"`
-		// 	Status          string `json:"status"`
-		// }
+			// type Market struct {
+			// 	// OpenInterest int `json:"open_interest"`
+			// 	Liquidity       int    `json:"liquidity"`
+			// 	Volume          int    `json:"volume"`
+			// 	No_ask_dollars  int    `json:"no_ask"`
+			// 	Yes_ask_dollars int    `json:"yes_yes"`
+			// 	Status          string `json:"status"`
+			// }
 
-		type Event struct {
-			Name         string
-			Title        string `json:"title"`
-			EventTicker  string `json:"event_ticker"`
-			SeriesTicker string `json:"series_ticker"`
-			Category     string `json:"category"`
-		}
+			type Event struct {
+				Name         string
+				Title        string `json:"title"`
+				EventTicker  string `json:"event_ticker"`
+				SeriesTicker string `json:"series_ticker"`
+				Category     string `json:"category"`
+			}
 
-		// initial data struct
-		type kdump struct {
-			Events []Event
-			Cursor string `json:"cursor"`
-		}
-		var kdata kdump
+			// initial data struct
+			type kdump struct {
+				Events []Event
+				Cursor string `json:"cursor"`
+			}
+			var kdata kdump
 
-		// if err := json.NewDecoder(res.Body).Decode(&kdata); err != nil {
-		// 	log.Fatalf("Error decoding: %v", err)
+			// if err := json.NewDecoder(res.Body).Decode(&kdata); err != nil {
+			// 	log.Fatalf("Error decoding: %v", err)
 
-		if err = json.Unmarshal(body, &kdata); err != nil {
-			log.Fatalf("Error unmarshalling: %v", err)
-		}
+			if err = json.Unmarshal(body, &kdata); err != nil {
+				log.Fatalf("Error unmarshalling: %v", err)
+			}
 
-		// if err = json.Unmarshal(kdata , &kdatamain); err != nil {
-		// 	log.Fatalf("err unmarshal")
-		// }
-		fmt.Println("RECEIVED CURSOR:", kdata.Cursor)
-		// fmt.Println("Data:", kdata)
+			// if err = json.Unmarshal(kdata , &kdatamain); err != nil {
+			// 	log.Fatalf("err unmarshal")
+			// }
+			fmt.Println("RECEIVED CURSOR:", kdata.Cursor)
+			// fmt.Println("Data:", kdata)
 
-		// *ptr = kdata.Cursor
-		params.Set("cursor", kdata.Cursor)
-		// fmt.Println("ptr", ptr)
-		cursor = kdata.Cursor
-		fmt.Println("cursor", cursor)
+			// *ptr = kdata.Cursor
+			params.Set("cursor", kdata.Cursor)
+			// fmt.Println("ptr", ptr)
+			cursor = kdata.Cursor
+			fmt.Println("cursor", cursor)
 
-		for _, event := range kdata.Events {
-			event.Name = "kalshi"
-			json_chan <- event
-		}
+			for _, event := range kdata.Events {
+				event.Name = "kalshi"
+				json_chan <- event
+			}
+
+		}()
 
 	}
 
@@ -171,61 +173,65 @@ func poly(events_api string, apiClient *http.Client, json_chan chan any) {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		req, err := http.NewRequest("GET", events_api, nil)
-		if err != nil {
-			log.Fatal("err making poly GET request [events]", err)
-		}
 
-		// structs
+		go func() {
+			req, err := http.NewRequest("GET", events_api, nil)
+			if err != nil {
+				log.Fatal("err making poly GET request [events]", err)
+			}
 
-		type polymarketdata struct {
-			Name     string
-			Title    string  `json:"title"`
-			Category string  `json:"category"`
-			Volume   float64 `json:"volume"`
-			Image    string  `json:"image"`
-		}
+			// structs
 
-		params := req.URL.Query()
+			type polymarketdata struct {
+				Name     string
+				Title    string  `json:"title"`
+				Category string  `json:"category"`
+				Volume   float64 `json:"volume"`
+				Image    string  `json:"image"`
+			}
 
-		params.Add("closed", "false")
+			params := req.URL.Query()
 
-		res, err := apiClient.Do(req)
-		if err != nil {
-			log.Fatal("err getting a res", err)
-		}
+			params.Add("closed", "false")
 
-		// creating a new decoder for incmin json data stream
-		body, err := io.ReadAll(res.Body)
-		res.Body.Close()
+			res, err := apiClient.Do(req)
+			if err != nil {
+				log.Fatal("err getting a res", err)
+			}
 
-		if err != nil {
-			log.Fatal("err reading body", err)
-		}
+			// creating a new decoder for incmin json data stream
+			body, err := io.ReadAll(res.Body)
+			res.Body.Close()
 
-		// decoder := json.NewDecoder(req.Body)
+			if err != nil {
+				log.Fatal("err reading body", err)
+			}
 
-		var pdata []polymarketdata
+			// decoder := json.NewDecoder(req.Body)
 
-		// err = json.NewDecoder(res.Body).Decode(&pdata)
+			var pdata []polymarketdata
 
-		// if err := decoder.Decode(&pdata); err != nil {
-		// 	if err == io.EOF {
-		// 		return
-		// 	}
-		// 	log.Println("decode err", err)
-		// 	return
-		// }
+			// err = json.NewDecoder(res.Body).Decode(&pdata)
 
-		if err = json.Unmarshal(body, &pdata); err != nil {
-			log.Fatal("err unmarshal poly:", err)
-		}
+			// if err := decoder.Decode(&pdata); err != nil {
+			// 	if err == io.EOF {
+			// 		return
+			// 	}
+			// 	log.Println("decode err", err)
+			// 	return
+			// }
 
-		for _, event := range pdata {
-			event.Name = "poly"
-			json_chan <- event
-		}
+			if err = json.Unmarshal(body, &pdata); err != nil {
+				log.Fatal("err unmarshal poly:", err)
+			}
+
+			for _, event := range pdata {
+				event.Name = "poly"
+				json_chan <- event
+			}
+		}()
 	}
+
 }
 
 func processJson(json_chan chan any, tgEventsC chan any) {
@@ -334,82 +340,91 @@ func processJson(json_chan chan any, tgEventsC chan any) {
 }
 
 func polyTrades(api string, apiClient *http.Client) {
-	ticker := time.NewTicker(100 * 1000)
+	ticker := time.NewTicker(150 * time.Millisecond)
 
-	defer ticker.Stop()
+	ptradesF, _ := os.OpenFile("polytrades.jsonl", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
 
-	ptradesF, _ := os.OpenFile("polytrades.jsonl", os.O_RDWR|os.O_CREATE, 0644)
+	tradesMap := make(map[string]struct{})
 
 	for range ticker.C {
-		req, err := http.NewRequest("GET", api, nil)
-		if err != nil {
-			log.Fatal("Err making request poly [trades]")
-		}
-
-		res, err := apiClient.Do(req)
-		if err != nil {
-			log.Fatal("Failed to get a response", err)
-		}
-		defer res.Body.Close()
-
-		log.Print("status", res.StatusCode)
-
-		type Trade struct {
-			ProxyWallet           string  `json:"proxyWallet"`
-			Side                  string  `json:"side"`
-			Asset                 string  `json:"asset"`
-			ConditionID           string  `json:"conditionId"`
-			Size                  float64 `json:"size"`
-			Price                 float64 `json:"price"`
-			Timestamp             int64   `json:"timestamp"`
-			Title                 string  `json:"title"`
-			Slug                  string  `json:"slug"`
-			Icon                  string  `json:"icon"`
-			EventSlug             string  `json:"eventSlug"`
-			Outcome               string  `json:"outcome"`
-			OutcomeIndex          int     `json:"outcomeIndex"`
-			Name                  string  `json:"name"`
-			Pseudonym             string  `json:"pseudonym"`
-			Bio                   string  `json:"bio"`
-			ProfileImage          string  `json:"profileImage"`
-			ProfileImageOptimized string  `json:"profileImageOptimized"`
-			TransactionHash       string  `json:"transactionHash"`
-		}
-
-		var trades []Trade
-
-		err = json.NewDecoder(res.Body).Decode(&trades)
-		if err != nil {
-			log.Fatal("Failed to decode json polytrades", err)
-		}
-
-		tradesMap := make(map[string]struct{})
-
-		left := 0
-		for right := 0; right < len(trades); right++ {
-
-			const windowMillisec = int64(120 * 1000)
-
-			// window invalidated remove the trades outside our time window
-			for left <= right && (trades[right].Timestamp-trades[left].Timestamp) > windowMillisec {
-				left++
+		go func() {
+			req, err := http.NewRequest("GET", api, nil)
+			if err != nil {
+				log.Fatal("Err making request poly [trades]")
 			}
 
-			// map returns value and boolean for key present or not
-			if _, exists := tradesMap[trades[right].TransactionHash]; exists {
-				continue
+			res, err := apiClient.Do(req)
+			if err != nil {
+				log.Fatal("Failed to get a response", err)
+			}
+			defer res.Body.Close()
+
+			log.Print("status", res.StatusCode)
+
+			type Trade struct {
+				ProxyWallet           string  `json:"proxyWallet"`
+				Side                  string  `json:"side"`
+				Asset                 string  `json:"asset"`
+				ConditionID           string  `json:"conditionId"`
+				Size                  float64 `json:"size"`
+				Price                 float64 `json:"price"`
+				Timestamp             int64   `json:"timestamp"`
+				Title                 string  `json:"title"`
+				Slug                  string  `json:"slug"`
+				Icon                  string  `json:"icon"`
+				EventSlug             string  `json:"eventSlug"`
+				Outcome               string  `json:"outcome"`
+				OutcomeIndex          int     `json:"outcomeIndex"`
+				Name                  string  `json:"name"`
+				Pseudonym             string  `json:"pseudonym"`
+				Bio                   string  `json:"bio"`
+				ProfileImage          string  `json:"profileImage"`
+				ProfileImageOptimized string  `json:"profileImageOptimized"`
+				TransactionHash       string  `json:"transactionHash"`
+				TradeSum              float64
 			}
 
-			tradeSum := trades[right].Size * trades[right].Price
-			if tradeSum >= 2000 {
-				tradesMap[trades[right].TransactionHash] = struct{}{}
+			var trades []Trade
 
-				prettyJson, _ := json.MarshalIndent(trades[right], "", "")
-				log.Println("LT ❤️:", string(prettyJson))
-				ptradesF.WriteString(string(prettyJson) + "\n")
+			err = json.NewDecoder(res.Body).Decode(&trades)
+			if err != nil {
+				log.Fatal("Failed to decode json polytrades", err)
 			}
-		}
+
+			left := 0
+			for right := 0; right < len(trades); right++ {
+
+				const windowMillisec = int64(120 * 1000)
+
+				// window invalidated remove the trades outside our time window
+				for left <= right && (trades[right].Timestamp-trades[left].Timestamp) > windowMillisec {
+					left++
+				}
+
+				// map returns value and boolean for key present or not
+				if _, exists := tradesMap[trades[right].TransactionHash]; exists {
+					continue
+				}
+
+				tradeSum := trades[right].Size * trades[right].Price
+
+				thresholds := []float64{2000, 5000, 10000, 20000}
+
+				var value float64
+				for _, value = range thresholds {
+					if tradeSum >= value {
+						fmt.Println("Value:", tradeSum)
+						tradesMap[trades[right].TransactionHash] = struct{}{}
+						trades[right].TradeSum = tradeSum
+						prettyJson, _ := json.MarshalIndent(trades[right], "", " ")
+						log.Println("LT ❤️:", string(prettyJson))
+						ptradesF.WriteString(string(prettyJson) + "\n")
+					}
+				}
+			}
+		}()
 	}
+
 }
 
 func kalshiTrades(api string, apiClient *http.Client) {
@@ -418,23 +433,25 @@ func kalshiTrades(api string, apiClient *http.Client) {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		req, err := http.NewRequest("GET", api, nil)
-		if err != nil {
-			log.Fatal("Err making request kalshi [trades]")
-		}
+		go func() {
+			req, err := http.NewRequest("GET", api, nil)
+			if err != nil {
+				log.Fatal("Err making request kalshi [trades]")
+			}
 
-		res, err := apiClient.Do(req)
-		if err != nil {
-			log.Fatal("Failed to get a response kalshi [trades]", err)
-		}
+			res, err := apiClient.Do(req)
+			if err != nil {
+				log.Fatal("Failed to get a response kalshi [trades]", err)
+			}
 
-		defer res.Body.Close()
+			defer res.Body.Close()
 
-		body, err := io.ReadAll(res.Body)
-		if err != nil {
-			log.Fatal("Failed to parse body", err)
-		}
+			body, err := io.ReadAll(res.Body)
+			if err != nil {
+				log.Fatal("Failed to parse body", err)
+			}
 
-		log.Print("ktrades: ", string(body))
+			log.Print("ktrades: ", string(body))
+		}()
 	}
 }
