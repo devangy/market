@@ -3,88 +3,90 @@ package main
 import (
 	"encoding/binary"
 	"encoding/json"
-	"fmt"
 	"hash/fnv"
 	"io"
-	"log"
 	"net/http"
-	"net/url"
 	"os"
-
 	"path/filepath"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/joho/godotenv"
 )
 
 func main() {
 
+	// enable logging debug level
+	log.SetLevel(log.DebugLevel)
+
 	// env init
 	err := godotenv.Load()
 
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Fatal("Loading .env File")
 	}
-	// proxy server
-	username := os.Getenv("username")
-	password := os.Getenv("password")
-	country := os.Getenv("country")
-	entryPoint := os.Getenv("entryPoint")
+	// proxy server creds
+	// username := os.Getenv("username")
+	// password := os.Getenv("password")
+	// country := os.Getenv("country")
+	// entryPoint := os.Getenv("entryPoint")
 
 	// Markets
-	// kalshi_events_API := os.Getenv("kalshi_events_API")
-	// poly_events_API := os.Getenv("poly_events_API")
+	kalshi_events_API := os.Getenv("kalshi_events_API")
+	poly_events_API := os.Getenv("poly_events_API")
 	poly_trades_API := os.Getenv("poly_trades_API")
 	// kalshi_trades_API := os.Getenv("kalshi_trades_API")
 
-	proxy, err := url.Parse(fmt.Sprintf("http://user-%s-country-%s:%s@%s", username, country, password, entryPoint))
-	if err != nil {
-		log.Fatalf("Error proxy parsing %v", err)
-	}
+	// proxy server provider URL for rotating proxy
+	// proxy, err := url.Parse(fmt.Sprintf("http://user-%s-country-%s:%s@%s", username, country, password, entryPoint))
+	// if err != nil {
+	// 	log.Fatalf("Error proxy parsing %v", err)
+	// }
 
 	// creating a struct instance using a struct literal in memory
 	apiClient := &http.Client{
-		Timeout: 15 * time.Second,
-		Transport: &http.Transport{
-			Proxy: http.ProxyURL(proxy),
-		},
+		Timeout: 30 * time.Second,
+		// Transport: &http.Transport{
+		// 	Proxy: http.ProxyURL(proxy),
+		// },
 	}
 
 	// channel where both api will send the json
 	json_chan := make(chan any, 200)
-
 	// Teleg channel for clean and filtered data according to logic applied
 	tgEventC := make(chan any, 200)
 
-	// ctx := context.Background()
-
-	go processJson(json_chan, tgEventC)
-
 	// go Bot(tgEventC)
 
-	// go kalshi(kalshi_events_API, apiClient, json_chan)
-	// go poly(poly_events_API, apiClient, json_chan)
-	polyTrades(poly_trades_API, apiClient)
+	go kalshi(kalshi_events_API, apiClient, json_chan)
+	log.Info("Started Kalshi Events Worker")
+	go poly(poly_events_API, apiClient, json_chan)
+	log.Info("Started Poly Events Worker")
+
+	go processEvents(json_chan, tgEventC)
+	log.Info("Started Events Processing Worker")
+
+	go polyTrades(poly_trades_API, apiClient)
+	log.Info("Started Poly Trades Worker")
 	// go kalshiTrades(kalshi_trades_API, apiClient)
+	// log.Info("Started Kalshi Trades Worker")
 
 	select {}
-
 }
 
 func kalshi(events_API string, apiClient *http.Client, json_chan chan any) {
 
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(200 * time.Millisecond)
 
 	defer ticker.Stop()
 
-	cursor := ""
-
 	for range ticker.C {
+		cursor := ""
 
 		go func() {
 			req, err := http.NewRequest("GET", events_API, nil)
 			if err != nil {
-				log.Fatalf("Err making get req: %v", err)
+				log.Fatal("GET request failed Kalshi Events", err)
 			}
 
 			// query params
@@ -96,21 +98,34 @@ func kalshi(events_API string, apiClient *http.Client, json_chan chan any) {
 
 			req.URL.RawQuery = params.Encode() // form full URL to make call\
 
-			fmt.Println(req.URL.Query())
+			log.Debug(req.URL.Query())
 			res, err := apiClient.Do(req)
-			// fmt.Println("url", res.Request.URL)
 			if err != nil {
-				log.Printf("Err getting res: %v", err)
-				continue // Skip this loop iteration, try again next tick
+				log.Error("failed response Kalshi Events", err)
+			}
+
+			// backoff for 15 second if server sends 2 many reqs status
+			var backoff time.Duration
+
+			if res.StatusCode == http.StatusTooManyRequests {
+				backoff = 15 * time.Second
+				return
+			}
+
+			if backoff > 0 {
+				time.Sleep(backoff)
+				backoff = 0
 			}
 
 			defer res.Body.Close() // close connection before exiting
 			// read from the Body
+			//
+			// log.Debug("kalsi", res.StatusCode)
 
-			body, err := io.ReadAll(res.Body)
-			if err != nil {
-				log.Panic("Error reading from res Body:", err)
-			}
+			// body, err := io.ReadAll(res.Body)
+			// if err != nil {
+			// 	log.Error("reading from response body Kalshi Events: ", err)
+			// }
 
 			// type Market struct {
 			// 	// OpenInterest int `json:"open_interest"`
@@ -136,24 +151,22 @@ func kalshi(events_API string, apiClient *http.Client, json_chan chan any) {
 			}
 			var kdata kdump
 
-			// if err := json.NewDecoder(res.Body).Decode(&kdata); err != nil {
-			// 	log.Fatalf("Error decoding: %v", err)
-
-			if err = json.Unmarshal(body, &kdata); err != nil {
-				log.Fatalf("Error unmarshalling: %v", err)
+			if err := json.NewDecoder(res.Body).Decode(&kdata); err != nil {
+				log.Debug("[KalshiEvents]| decoding Body Kalshi: ", err)
 			}
 
-			// if err = json.Unmarshal(kdata , &kdatamain); err != nil {
-			// 	log.Fatalf("err unmarshal")
+			// if err = json.Unmarshal(body, &kdata); err != nil {
+			// 	log.Error("reading from: ", err)
 			// }
-			fmt.Println("RECEIVED CURSOR:", kdata.Cursor)
+
+			log.Debug("KALSHI RECEIVED CURSOR:", kdata.Cursor)
 			// fmt.Println("Data:", kdata)
 
 			// *ptr = kdata.Cursor
 			params.Set("cursor", kdata.Cursor)
 			// fmt.Println("ptr", ptr)
 			cursor = kdata.Cursor
-			fmt.Println("cursor", cursor)
+			log.Debug("CursorValue: ", cursor)
 
 			for _, event := range kdata.Events {
 				event.Name = "kalshi"
@@ -168,7 +181,7 @@ func kalshi(events_API string, apiClient *http.Client, json_chan chan any) {
 
 func poly(events_api string, apiClient *http.Client, json_chan chan any) {
 
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(150 * time.Millisecond)
 
 	defer ticker.Stop()
 
@@ -177,7 +190,7 @@ func poly(events_api string, apiClient *http.Client, json_chan chan any) {
 		go func() {
 			req, err := http.NewRequest("GET", events_api, nil)
 			if err != nil {
-				log.Fatal("err making poly GET request [events]", err)
+				log.Fatal("[PolyEvents] GET request: ", err)
 			}
 
 			// structs
@@ -196,7 +209,7 @@ func poly(events_api string, apiClient *http.Client, json_chan chan any) {
 
 			res, err := apiClient.Do(req)
 			if err != nil {
-				log.Fatal("err getting a res", err)
+				log.Error("[PolyEvents] | getting response", err)
 			}
 
 			// creating a new decoder for incmin json data stream
@@ -204,20 +217,20 @@ func poly(events_api string, apiClient *http.Client, json_chan chan any) {
 			res.Body.Close()
 
 			if err != nil {
-				log.Fatal("err reading body", err)
+				log.Fatal("[PolyEvents] | Reading body", err)
 			}
-
-			// decoder := json.NewDecoder(req.Body)
 
 			var pdata []polymarketdata
 
-			// err = json.NewDecoder(res.Body).Decode(&pdata)
+			// decoder := json.NewDecoder(req.Body)
+
+			err = json.NewDecoder(res.Body).Decode(&pdata)
 
 			// if err := decoder.Decode(&pdata); err != nil {
 			// 	if err == io.EOF {
 			// 		return
 			// 	}
-			// 	log.Println("decode err", err)
+			// 	log.Fatal("[PolyEvent] | Decoding response body: ", err)
 			// 	return
 			// }
 
@@ -234,19 +247,19 @@ func poly(events_api string, apiClient *http.Client, json_chan chan any) {
 
 }
 
-func processJson(json_chan chan any, tgEventsC chan any) {
+func processEvents(json_chan chan any, tgEventsC chan any) {
 	// get current dir path
 	//
 
 	directory, err := os.Getwd()
 	if err != nil {
-		log.Fatal("Unable to get current directory path", err)
+		log.Fatal("Unable to get current directory path: ", err)
 	}
 
 	// create a file or open existing output.jsonl file for writing data
-	file, err := os.OpenFile(filepath.Join(directory, "hashes.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	file, err := os.OpenFile(filepath.Join(directory, "hashes.bin"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		log.Fatal("Unable opening file for writing", err)
+		log.Fatal("Opening hashes file for writing: ", err)
 	}
 
 	defer file.Close()
@@ -257,7 +270,7 @@ func processJson(json_chan chan any, tgEventsC chan any) {
 	// load already seen hashes into hashmap so that dupes dont get forwarded
 	binFile, err := os.Open("hashes.bin")
 	if err != nil {
-		log.Fatal("failed to open bin file", err)
+		log.Fatal("Open hashes bin file: ", err)
 
 	}
 	defer binFile.Close()
@@ -269,11 +282,13 @@ func processJson(json_chan chan any, tgEventsC chan any) {
 		var buffBin [8]byte
 
 		_, err = io.ReadFull(binFile, buffBin[:])
-		if err != nil {
-			log.Print("err reading bin file:", err)
-		}
+
 		if err == io.EOF {
-			log.Print("EOF Reached!")
+			log.Info("[processEvents] | EOF Reached!")
+			break
+		}
+		if err != nil {
+			log.Error("Unexpected error reading bin file:", err)
 			break
 		}
 
@@ -282,20 +297,20 @@ func processJson(json_chan chan any, tgEventsC chan any) {
 		// load hashes in hashmap
 		seenMap[value] = struct{}{}
 
-		log.Print("value", value)
+		log.Debug("value", value)
 
-		log.Print("buffBin", buffBin)
+		log.Debug("buffBin", buffBin)
 	}
 
 	// start processing json
 	for jdata := range json_chan {
 
-		log.Print("JSONLoop:", jdata)
+		log.Debug("JSON_chanData: ", jdata)
 
 		// convert incoming json to bytes
 		jsonBytes, err := json.Marshal(jdata)
 		if err != nil {
-			log.Fatal("failed converting to jsonBytes", err)
+			log.Fatal("[processEvent] | Converting to bytes: ", err)
 		}
 
 		// init fnv-1a hashing state object
@@ -305,11 +320,11 @@ func processJson(json_chan chan any, tgEventsC chan any) {
 		// output hashes
 		jsonHashValue := fnvH.Sum64()
 
-		log.Print("JsonHashValue", jsonHashValue)
+		log.Debug("JsonHashValue", jsonHashValue)
 
 		// if hash seen before jump to next item
 		if _, exists := seenMap[jsonHashValue]; exists {
-			log.Print("Duplicate found skipping to next")
+			log.Debug("Duplicate found skipping")
 			continue
 		}
 
@@ -319,7 +334,7 @@ func processJson(json_chan chan any, tgEventsC chan any) {
 		// allocate buffer of size 8 bytes
 		var buff [8]byte
 
-		log.Print("empty buff", buff)
+		log.Debug("empty buff", buff)
 
 		// put the hash value in the buffer in BigEndian byte order
 		binary.BigEndian.PutUint64(buff[:], jsonHashValue)
@@ -331,9 +346,9 @@ func processJson(json_chan chan any, tgEventsC chan any) {
 		seenMap[jsonHashValue] = struct{}{}
 
 		bywritten, err := file.Write(buff[:])
-		log.Print("bytes written: ", bywritten)
+		log.Debug("bytes written: ", bywritten)
 		if err != nil {
-			log.Fatal("failed to write buffer to file", err)
+			log.Fatal("[processEvent] | Write buffer to hashes.bin file: ", err)
 		}
 
 	}
@@ -350,16 +365,35 @@ func polyTrades(api string, apiClient *http.Client) {
 		go func() {
 			req, err := http.NewRequest("GET", api, nil)
 			if err != nil {
-				log.Fatal("Err making request poly [trades]")
+				log.Fatal("[polyTrades] | GET request: ", err)
 			}
 
 			res, err := apiClient.Do(req)
 			if err != nil {
-				log.Fatal("Failed to get a response", err)
+				log.Fatal("[polyTrades] | Failed response: ", err)
+
 			}
 			defer res.Body.Close()
 
-			log.Print("status", res.StatusCode)
+			log.Debug("status", res.StatusCode)
+
+			if res.StatusCode == http.StatusTooManyRequests {
+				log.Error("[polyTrades] | Status 429: ", err)
+				time.Sleep(15 * time.Second)
+			}
+
+			// backoff for 15 second if server sends 2 many reqs status
+			var backoff time.Duration
+
+			if res.StatusCode == http.StatusTooManyRequests {
+				backoff = 15 * time.Second
+				return
+			}
+
+			if backoff > 0 {
+				time.Sleep(backoff)
+				backoff = 0
+			}
 
 			type Trade struct {
 				ProxyWallet           string  `json:"proxyWallet"`
@@ -388,7 +422,7 @@ func polyTrades(api string, apiClient *http.Client) {
 
 			err = json.NewDecoder(res.Body).Decode(&trades)
 			if err != nil {
-				log.Fatal("Failed to decode json polytrades", err)
+				log.Fatal("[polyTrades] | Response Body decoding: ", err)
 			}
 
 			left := 0
@@ -413,11 +447,11 @@ func polyTrades(api string, apiClient *http.Client) {
 				var value float64
 				for _, value = range thresholds {
 					if tradeSum >= value {
-						fmt.Println("Value:", tradeSum)
+						log.Debug("Value:", tradeSum)
 						tradesMap[trades[right].TransactionHash] = struct{}{}
 						trades[right].TradeSum = tradeSum
-						prettyJson, _ := json.MarshalIndent(trades[right], "", " ")
-						log.Println("LT ❤️:", string(prettyJson))
+						prettyJson, _ := json.MarshalIndent(trades[right], "", "  ")
+						log.Debug("LT ❤️:", string(prettyJson))
 						ptradesF.WriteString(string(prettyJson) + "\n")
 					}
 				}
@@ -436,22 +470,22 @@ func kalshiTrades(api string, apiClient *http.Client) {
 		go func() {
 			req, err := http.NewRequest("GET", api, nil)
 			if err != nil {
-				log.Fatal("Err making request kalshi [trades]")
+				log.Fatal("[kalshiTrades] | GET request: ", err)
 			}
 
 			res, err := apiClient.Do(req)
 			if err != nil {
-				log.Fatal("Failed to get a response kalshi [trades]", err)
+				log.Fatal("[kalshiTrades] | GET response: ", err)
 			}
 
 			defer res.Body.Close()
 
 			body, err := io.ReadAll(res.Body)
 			if err != nil {
-				log.Fatal("Failed to parse body", err)
+				log.Fatal("[kalshiTrades] | Parse response body: ", err)
 			}
 
-			log.Print("ktrades: ", string(body))
+			log.Debug("ktrades: ", string(body))
 		}()
 	}
 }
