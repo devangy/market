@@ -571,6 +571,13 @@ func polyWallet(api string, apiClient *http.Client, tradeWalletC chan Trade) {
 		EndDate         string  `json:"endDate"`
 	}
 
+	type WalletStats struct {
+		Address  string
+		Wins     int
+		Losses   int
+		botFlage int
+	}
+
 	// type Trade struct {
 	// 	ProxyWallet           string  `json:"proxyWallet"`
 	// 	Side                  string  `json:"side"`
@@ -594,7 +601,7 @@ func polyWallet(api string, apiClient *http.Client, tradeWalletC chan Trade) {
 	// 	TradeSum              float64
 	// }
 
-	var users []UserTrades
+	var userTrades []UserTrades
 
 	// var trades Trade
 
@@ -630,12 +637,54 @@ func polyWallet(api string, apiClient *http.Client, tradeWalletC chan Trade) {
 
 			log.Info("polyWallet: ", res.StatusCode)
 
-			json.NewDecoder(res.Body).Decode(&users)
+			json.NewDecoder(res.Body).Decode(&userTrades)
 
-			for _, userTrade := range users {
-				log.Debug("user:", userTrade)
+			var wins, loss int
+			var totalGains, totalLosses int64
+			var botFlag int
+			var profitFactor float64
+			var winRate float64
+			var finalScore float64
+
+			// iterate over all user trades and calculate performance of the User from past 100 closed trades
+			for _, userTrade := range userTrades {
+				if userTrade.RealizedPnl > 0 {
+					wins++
+					totalGains += int64(userTrade.RealizedPnl)
+				} else {
+					loss++
+					totalLosses += int64(userTrade.RealizedPnl * -1)
+				}
+
+				pnlPercent := userTrade.RealizedPnl / userTrade.TotalBought
+				if pnlPercent > 0.01 && pnlPercent < 0.04 {
+					botFlag++
+				}
 
 			}
+
+			if botFlag > 30 {
+				log.Info("Skipping Bot: %s", trade.ProxyWallet)
+				return
+			}
+
+			// 2. Final Calculations (Outside the loop)
+			if totalLosses == 0 {
+				// Avoid division by zero if they have 100% win rate
+				profitFactor = float64(totalGains)
+			} else {
+				profitFactor = float64(totalGains) / float64(totalLosses)
+			}
+
+			if count := len(userTrades); count > 0 {
+				winRate = (float64(wins) / float64(count)) * 100
+			}
+
+			// 3. Adjusted Scoring
+			// Multiply Profit Factor by Win Rate percentage (0.0 to 1.0)
+			finalScore = profitFactor * (float64(wins) / 100.0)
+
+			log.Print("✅ Alpha Found! Wallet: %s | Score: %.2f | WinRate: %d%%", trade.ProxyWallet, finalScore, winRate)
 
 		}()
 
