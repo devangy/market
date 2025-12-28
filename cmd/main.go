@@ -694,7 +694,7 @@ func polyWallet(api string, apiClient *http.Client, tradeWalletC chan Trade) {
 			finalScore := profitFactor * winRate * botPenalty
 
 			log.Print(
-				"✅ Alpha Wallet=%s | Score=%.3f | WinRate=%.2f%% | PF=%.2f | BotFlags=%d",
+				"✅ Smart Wallet=%s | Score=%.3f | WinRate=%.2f%% | PF=%.2f | BotFlags=%d",
 				trade.ProxyWallet,
 				finalScore,
 				winRate*100,
