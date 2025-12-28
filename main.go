@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -21,29 +21,59 @@ func main() {
 	// enable logging debug level
 	log.SetLevel(log.DebugLevel)
 
-	fmt.Printf(`
-[38;2;120;200;255m888                                    888                  [0m
-[38;2;130;190;255m888                                    888                  [0m
-[38;2;140;180;255m888                                    888                  [0m
-[38;2;150;170;255m888  888 888d888 8888b.  888  888  888 888  .d88b.  888d888 [0m
-[38;2;160;160;255m888 .88P 888P"      "88b 888  888  888 888 d8P  Y8b 888P"    [0m
-[38;2;170;150;255m888888K  888    .d888888 888  888  888 888 88888888 888     [0m
-[38;2;180;140;255m888 "88b 888    888  888 Y88b 888 d88P 888 Y8b.     888     [0m
-[38;2;190;130;255m888  888 888    "Y888888  "Y8888888P"  888  "Y8888  888     [0m
+	fmt.Print("\n\n")
 
+	banner := []string{
+		"   /$$                               /$$            /$$$$$$                                  /$$                        /$$  ",
+		"  | $$                              | $$           /$$__  $$                                | $$                      /$$$$  ",
+		" /$$$$$$    /$$$$$$   /$$$$$$   /$$$$$$$  /$$$$$$ | $$  \\__/  /$$$$$$$  /$$$$$$  /$$   /$$ /$$$$$$         /$$    /$$|_  $$  ",
+		"|_  $$_/   /$$__  $$ |____  $$ /$$__  $$ /$$__  $$|  $$$$$$  /$$_____/ /$$__  $$| $$  | $$|_  $$_/        |  $$  /$$/  | $$  ",
+		"  | $$    | $$  \\__/  /$$$$$$$| $$  | $$| $$$$$$$$ \\____  $$| $$      | $$  \\ $$| $$  | $$  | $$           \\  $$/$$/   | $$  ",
+		"  | $$ /$$| $$       /$$__  $$| $$  | $$| $$_____/ /$$  \\ $$| $$      | $$  | $$| $$  | $$  | $$ /$$        \\  $$$/    | $$  ",
+		"  |  $$$$/| $$      |  $$$$$$$|  $$$$$$$|  $$$$$$$|  $$$$$$/|  $$$$$$$|  $$$$$$/|  $$$$$$/  |  $$$$/         \\  $/    /$$$$$$",
+		"   \\___/  |__/       \\_______/ \\_______/ \\_______/ \\______/  \\_______/ \\______/  \\______/    \\___/            \\_/    |______/",
+	}
 
-`)
+	// gradient colors (cyan to violet)
+	startR, startG, startB := 100, 200, 255
+	endR, endG, endB := 190, 120, 255
+
+	maxLen := 0
+	for _, line := range banner {
+		if len(line) > maxLen {
+			maxLen = len(line)
+		}
+	}
+
+	for _, line := range banner {
+		var out strings.Builder
+
+		for i, ch := range line {
+			t := float64(i) / float64(maxLen)
+
+			r := int(float64(startR) + t*float64(endR-startR))
+			g := int(float64(startG) + t*float64(endG-startG))
+			b := int(float64(startB) + t*float64(endB-startB))
+
+			out.WriteString(fmt.Sprintf("\x1b[38;2;%d;%d;%dm%c", r, g, b, ch))
+		}
+
+		out.WriteString("\x1b[0m")
+		fmt.Println(out.String())
+	}
+
+	fmt.Print("\n\n\n\n")
 
 	// wait 3 second before starting up
 	seconds := 3
 	for i := seconds; i > 0; i-- {
 		fmt.Printf(
-			"\r\033[38;5;82mStarting in... \033[38;5;196m%d\033[0m \n",
+			"\r\033[38;5;82m  Bot starting in:  \033[38;5;196m%d\033[0m",
 			i,
 		)
-
 		time.Sleep(time.Second)
 	}
+	fmt.Print("\n\n\n")
 
 	// env init
 	err := godotenv.Load()
@@ -451,7 +481,7 @@ func polyTrades(api string, apiClient *http.Client, tradeWalletC chan Trade) {
 			}
 			defer res.Body.Close()
 
-			log.Debug("status", res.StatusCode)
+			log.Debug("polyTrades status", res.StatusCode)
 
 			if res.StatusCode == http.StatusTooManyRequests {
 				log.Error("[polyTrades] | Status 429: ", err)
@@ -538,18 +568,18 @@ func polyTrades(api string, apiClient *http.Client, tradeWalletC chan Trade) {
 }
 
 func polyWallet(api string, apiClient *http.Client, tradeWalletC chan Trade) {
-	// dir, err := os.Getwd()
-	// if err != nil {
-	// 	log.Error("polyTrades | Error getting dir path:")
-	// 	return
-	// }
+	dir, err := os.Getwd()
+	if err != nil {
+		log.Error("polyTrades | Error getting dir path:")
+		return
+	}
 
-	// tradesDir := filepath.Join(dir, "logs")
+	tradesDir := filepath.Join(dir, "logs")
 
-	// tradesF, err := os.OpenFile(filepath.Join(tradesDir, "polyTrades.jsonl"), os.O_RDONLY, 0)
-	// if err != nil {
-	// 	log.Fatal("Opening hashes file for writing: ", err)
-	// }
+	tradesF, err := os.OpenFile(filepath.Join(tradesDir, "polyWalletTrades.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		log.Fatal("Opening hashes file for writing: ", err)
+	}
 
 	type UserTrades struct {
 		ProxyWallet     string  `json:"proxyWallet"`
@@ -571,36 +601,6 @@ func polyWallet(api string, apiClient *http.Client, tradeWalletC chan Trade) {
 		EndDate         string  `json:"endDate"`
 	}
 
-	type WalletStats struct {
-		Address  string
-		Wins     int
-		Losses   int
-		botFlage int
-	}
-
-	// type Trade struct {
-	// 	ProxyWallet           string  `json:"proxyWallet"`
-	// 	Side                  string  `json:"side"`
-	// 	Asset                 string  `json:"asset"`
-	// 	ConditionID           string  `json:"conditionId"`
-	// 	Size                  float64 `json:"size"`
-	// 	Price                 float64 `json:"price"`
-	// 	Timestamp             int64   `json:"timestamp"`
-	// 	Title                 string  `json:"title"`
-	// 	Slug                  string  `json:"slug"`
-	// 	Icon                  string  `json:"icon"`
-	// 	EventSlug             string  `json:"eventSlug"`
-	// 	Outcome               string  `json:"outcome"`
-	// 	OutcomeIndex          int     `json:"outcomeIndex"`
-	// 	Name                  string  `json:"name"`
-	// 	Pseudonym             string  `json:"pseudonym"`
-	// 	Bio                   string  `json:"bio"`
-	// 	ProfileImage          string  `json:"profileImage"`
-	// 	ProfileImageOptimized string  `json:"profileImageOptimized"`
-	// 	TransactionHash       string  `json:"transactionHash"`
-	// 	TradeSum              float64
-	// }
-
 	var userTrades []UserTrades
 
 	// var trades Trade
@@ -609,82 +609,143 @@ func polyWallet(api string, apiClient *http.Client, tradeWalletC chan Trade) {
 	for trade := range tradeWalletC {
 
 		log.Print("tradePWallet:", trade)
-		// extrac
 
 		go func() {
 			req, err := http.NewRequest("GET", api, nil)
 			if err != nil {
-				log.Error("creating request polyWallet: ", err)
+				log.Error("creating request polyWallet:", err)
 				return
 			}
 
-			// params
+			// query params
 			params := req.URL.Query()
-			// extract wallet addr from each trade
 			params.Add("user", trade.ProxyWallet)
-			params.Add("limit", strconv.Itoa(100))
+			params.Add("limit", "100")
 			params.Add("sortBy", "TIMESTAMP")
 			params.Add("sortDirection", "DESC")
-
 			req.URL.RawQuery = params.Encode()
-			log.Print("API:", api)
+
+			log.Debug("API:", req.URL.String())
 
 			res, err := apiClient.Do(req)
 			if err != nil {
-				log.Error("polyWallet - failed to get response: ", err)
+				log.Error("polyWallet request failed:", err)
+				return
+			}
+			defer res.Body.Close()
+
+			if err := json.NewDecoder(res.Body).Decode(&userTrades); err != nil {
+				log.Error("polyWallet decode error:", err)
 				return
 			}
 
-			log.Info("polyWallet: ", res.StatusCode)
+			var (
+				wins, losses int
+				totalGains   float64
+				totalLosses  float64
+				botFlag      float64
+			)
 
-			json.NewDecoder(res.Body).Decode(&userTrades)
+			// analyze trades
+			for _, trade := range userTrades {
 
-			var wins, loss int
-			var totalGains, totalLosses int64
-			var botFlag int
-			var profitFactor float64
-			var winRate float64
-			var finalScore float64
+				pnl := trade.RealizedPnl
 
-			// iterate over all user trades and calculate performance of the User from past 100 closed trades
-			for _, userTrade := range userTrades {
-				if userTrade.RealizedPnl > 0 {
+				if pnl > 0 {
 					wins++
-					totalGains += int64(userTrade.RealizedPnl)
-				} else {
-					loss++
-					totalLosses += int64(userTrade.RealizedPnl * -1)
+					totalGains += pnl
+				} else if pnl < 0 {
+					losses++
+					totalLosses += -pnl
 				}
 
-				pnlPercent := userTrade.RealizedPnl / userTrade.TotalBought
-				if pnlPercent > 0.01 && pnlPercent < 0.04 {
-					botFlag++
+				// bot-like micro profit detection
+				if trade.TotalBought > 0 {
+					pnlPct := pnl / trade.TotalBought
+					if pnlPct > 0.01 && pnlPct < 0.04 {
+						botFlag++
+					}
 				}
-
 			}
 
-			if botFlag > 30 {
-				log.Info("Skipping Bot: %s", trade.ProxyWallet)
+			totalTrades := wins + losses
+			if totalTrades == 0 {
 				return
 			}
 
-			// 2. Final Calculations (Outside the loop)
+			// win rate (0–1)
+			winRate := float64(wins) / float64(totalTrades)
+
+			// profit factor
+			var profitFactor float64
 			if totalLosses == 0 {
-				// Avoid division by zero if they have 100% win rate
-				profitFactor = float64(totalGains)
+				profitFactor = totalGains
 			} else {
-				profitFactor = float64(totalGains) / float64(totalLosses)
+				profitFactor = totalGains / totalLosses
 			}
 
-			if count := len(userTrades); count > 0 {
-				winRate = (float64(wins) / float64(count)) * 100
+			// soft bot penalty
+			botPenalty := 1.0 - float64(botFlag)/float64(totalTrades)
+			if botPenalty < 0 {
+				botPenalty = 0
 			}
 
-			// 3. Adjusted Scoring
-			// Multiply Profit Factor by Win Rate percentage (0.0 to 1.0)
-			finalScore = profitFactor * (float64(wins) / 100.0)
+			// final score
+			finalScore := profitFactor * winRate * botPenalty
 
-			log.Print("✅ Alpha Found! Wallet: %s | Score: %.2f | WinRate: %d%%", trade.ProxyWallet, finalScore, winRate)
+			log.Print(
+				"✅ Alpha Wallet=%s | Score=%.3f | WinRate=%.2f%% | PF=%.2f | BotFlags=%d",
+				trade.ProxyWallet,
+				finalScore,
+				winRate*100,
+				profitFactor,
+				botFlag,
+			)
+
+			// time of data write
+			unixNow := time.Now().Unix()
+			currentTime := time.Unix(unixNow, 0).Format("02 Jan 15:04")
+
+			type WalletStats struct {
+				Trader       string
+				Address      string
+				Wins         int
+				Losses       int
+				WinRate      float64
+				ProfitFactor float64
+				BotFlags     float64
+				Score        float64
+				TotalTrades  int
+				TotalProfit  float64
+				Timestamp    string
+				AppendTime   string
+			}
+
+			result := WalletStats{
+				Address:      trade.ProxyWallet,
+				Wins:         wins,
+				Losses:       losses,
+				WinRate:      winRate * 100,
+				ProfitFactor: profitFactor,
+				BotFlags:     botFlag,
+				Score:        finalScore,
+				TotalTrades:  totalTrades,
+				TotalProfit:  totalGains - totalLosses,
+				AppendTime:   currentTime,
+				Trader:       trade.Name,
+			}
+
+			data, err := json.MarshalIndent(result, "", "  ")
+			if err != nil {
+				log.Error("polywallet Marshall error", err)
+				return
+			}
+
+			_, err = tradesF.Write(append(data, '\n'))
+			if err != nil {
+				log.Error("polyWallet write error:", err)
+				return
+			}
 
 		}()
 
