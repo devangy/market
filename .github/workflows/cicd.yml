@@ -1,0 +1,25 @@
+name: Build go binary
+
+on:
+    push:
+        branches:
+            - main
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - name: checkout source
+              uses: actions/checkout@v4
+            - name: create .env file and add secrets
+              run: |
+                  cd cmd && touch .env
+                  echo "BOT_TOKEN=${{ secrets.BOT_TOKEN }}" >> .env
+                  echo "username=${{ secrets.username }}" >> .env
+                  echo "password=${{ secrets.password }}" >> .env
+                  echo "country=${{ secrets.country }}" >> .env
+                  echo "entryPoint=${{ secrets.entryPoint }}" >> .env
+                  echo "kalshi_events_API=${{ secrets.kalshi_events_API }}" >> .env
+                  echo "poly_events_API=${{ secrets.poly_events_API }}" >> .env
+                  echo "poly_trades_API=${{ secrets.poly_trades_API }}" >> .env
+                  echo "poly_walletProfile_API=${{ secrets.poly_walletProfile_API }}" >> .env
+                  echo "kalshi_trades_API=${{ secrets.kalshi_trades_API }}" >> .env

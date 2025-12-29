@@ -1,0 +1,6 @@
+# .dockerignore
+.git
+terraform.tfstate*
+.terraform/
+bin/
+vendor/
