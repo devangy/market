@@ -45,3 +45,4 @@ logs/
 
 # Ignore variables that might contain passwords
 *.tfvars
+terraform.tfvars
