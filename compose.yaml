@@ -1,0 +1,7 @@
+services:
+    bot:
+        build: .
+        image: tradeflow:latest
+        env_file:
+            - .env
+        restart: always

@@ -1,4 +1,4 @@
-name: Build go binary
+name: tradeflow docker build
 
 on:
     push:
@@ -6,20 +6,27 @@ on:
             - main
 jobs:
     build:
-        runs-on: ubuntu-latest
+        runs-on: self-hosted
         steps:
             - name: checkout source
               uses: actions/checkout@v4
-            - name: create .env file and add secrets
+            - name: create .env file and populate via Github secrets
               run: |
-                  cd cmd && touch .env
-                  echo "BOT_TOKEN=${{ secrets.BOT_TOKEN }}" >> .env
-                  echo "username=${{ secrets.username }}" >> .env
-                  echo "password=${{ secrets.password }}" >> .env
-                  echo "country=${{ secrets.country }}" >> .env
-                  echo "entryPoint=${{ secrets.entryPoint }}" >> .env
-                  echo "kalshi_events_API=${{ secrets.kalshi_events_API }}" >> .env
-                  echo "poly_events_API=${{ secrets.poly_events_API }}" >> .env
-                  echo "poly_trades_API=${{ secrets.poly_trades_API }}" >> .env
-                  echo "poly_walletProfile_API=${{ secrets.poly_walletProfile_API }}" >> .env
-                  echo "kalshi_trades_API=${{ secrets.kalshi_trades_API }}" >> .env
+                  cat <<EOF > .env
+                  BOT_TOKEN=${{ secrets.BOT_TOKEN }}
+                  username=${{ secrets.username }}
+                  password=${{ secrets.password }}
+                  country=${{ secrets.country }}
+                  entryPoint=${{ secrets.entryPoint }}
+                  kalshi_events_API=${{ secrets.kalshi_events_API }}
+                  poly_events_API=${{ secrets.poly_events_API }}
+                  poly_trades_API=${{ secrets.poly_trades_API }}
+                  poly_walletProfile_API=${{ secrets.poly_walletProfile_API }}
+                  kalshi_trades_API=${{ secrets.kalshi_trades_API }}
+                  EOF
+
+            - name: run container with .env
+              run: |
+                  docker compose down
+                  docker-compose up -d --force-recreate
+                  docker image prune -f

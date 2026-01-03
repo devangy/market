@@ -7,7 +7,7 @@ provider "aws" {
 resource "aws_instance" "bot_instance" {
   ami           = "ami-02b8269d5e85954ef" // amazon ami image id (ubuntu 64 bit architecture)
   instance_type = "t2.micro"
-  # user_data = <- EOF
+  user_data     = file("./scripts/startup.sh")
 
   // dashboard instance name
   tags = {
@@ -15,7 +15,7 @@ resource "aws_instance" "bot_instance" {
   }
 }
 
-// defining our security group here for allowed traffic on our server
+// defining our security group here for allowed traffic on our server defined ports
 resource "aws_security_group" "bot_firewall" {
   name        = "bot-firewall"
   description = "Allow SSH and Web traffic"
@@ -42,9 +42,11 @@ resource "aws_vpc_security_group_ingress_rule" "allow_http" {
   to_port           = 80
 }
 
-# outbound Rule allow all outbound traffic
-resource "aws_vpc_security_group_egress_rule" "allow_all_outbound" {
+# outbound Rule allow limited https traffic
+resource "aws_vpc_security_group_egress_rule" "allow_https_outbound" {
   security_group_id = aws_security_group.bot_firewall.id
-  cidr_ipv4         = "0.0.0.0/0"
-  ip_protocol       = "-1" # -1 means "all protocols"
+  cidr_ipv4         = "0.0.0.0/0" // to any ip address
+  ip_protocol       = "tcp"       // only https allowed
+  from_port         = 443
+  to_port           = 443
 }

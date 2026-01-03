@@ -79,7 +79,7 @@ func main() {
 	err := godotenv.Load()
 
 	if err != nil {
-		log.Fatal("Loading .env File")
+		log.Info("No .env file found, using system env")
 	}
 	// proxy server creds
 	// username := os.Getenv("username")
