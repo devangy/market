@@ -7,7 +7,10 @@ provider "aws" {
 resource "aws_instance" "bot_instance" {
   ami           = "ami-02b8269d5e85954ef" // amazon ami image id (ubuntu 64 bit architecture)
   instance_type = "t2.micro"
-  user_data     = file("./scripts/startup.sh")
+  # user_data     = file("../scripts/startup.sh")
+  user_data = templatefile("${path.module}/scripts/setup_runner.sh", {
+    runner_token = var.gh_runner_token
+  })
 
   // dashboard instance name
   tags = {
