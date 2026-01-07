@@ -2,19 +2,19 @@ provider "aws" {
   region = "ap-south-1"
 }
 
-# 1. Generate the RSA Private Key
+# generate the RSA private key
 resource "tls_private_key" "main_key" {
 algorithm = "RSA"
 rsa_bits  = 4096
 }
 
-# 2. Register the Public Key with AWS
+# register the public ey with AWS
 resource "aws_key_pair" "deployer" {
 key_name   = "my-terraform-key"
 public_key = tls_private_key.main_key.public_key_openssh
 }
 
-# 3. Save the Private Key to your local machine
+# save the private key to  local machine
 resource "local_file" "ssh_key" {
 filename        = "${pathexpand("~/.ssh/aws-key.pem")}"
 content         = tls_private_key.main_key.private_key_pem
