@@ -88,8 +88,8 @@ func main() {
 	// entryPoint := os.Getenv("entryPoint")
 
 	// Markets
-	// kalshi_events_API := os.Getenv("kalshi_events_API")
-	// poly_events_API := os.Getenv("poly_events_API")
+	kalshi_events_API := os.Getenv("kalshi_events_API")
+	poly_events_API := os.Getenv("poly_events_API")
 	poly_trades_API := os.Getenv("poly_trades_API")
 	poly_profile_API := os.Getenv("poly_walletProfile_API")
 	// kalshi_trades_API := os.Getenv("kalshi_trades_API")
@@ -114,21 +114,21 @@ func main() {
 	}
 
 	// channel where both api will send the json
-	// events_chan := make(chan any, 200)
+	events_chan := make(chan any, 200)
 	// // Telegram channel for clean and filtered data according to logic applied
-	// tgEventC := make(chan any, 200)
+	tgEventC := make(chan any, 200)
 	// trade wallet address chan
 	tradeWalletC := make(chan Trade, 200)
 
-	// go Bot(tgEventC)
+	go Bot(tgEventC)
 
-	// go kalshi(kalshi_events_API, apiClient, events_chan)
-	// log.Info("Started Kalshi Events Worker")
-	// go poly(poly_events_API, apiClient, events_chan)
-	// log.Info("Started Poly Events Worker")
+	go kalshi(kalshi_events_API, apiClient, events_chan)
+	log.Info("Started Kalshi Events Worker")
+	go poly(poly_events_API, apiClient, events_chan)
+	log.Info("Started Poly Events Worker")
 
-	// go processEvents(events_chan, tgEventC)
-	// log.Info("Started Events Processing Worker")
+	go processEvents(events_chan, tgEventC)
+	log.Info("Started Events Processing Worker")
 
 	go polyTrades(poly_trades_API, apiClient, tradeWalletC)
 	log.Info("Started Poly Trades Worker")
@@ -136,7 +136,7 @@ func main() {
 	go polyWallet(poly_profile_API, apiClient, tradeWalletC)
 	log.Info("Started Poly Trades Worker")
 	// go kalshiTrades(kalshi_trades_API, apiClient)
-	// log.Info("Started Kalshi Trades Worker")
+	log.Info("Started Kalshi Trades Worker")
 
 	select {}
 }
