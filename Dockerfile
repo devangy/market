@@ -13,7 +13,7 @@ RUN apk add --no-cache ca-certificates
 
 
 # copy to root
-COPY cmd/go.mod cmd/go.sum ./
+COPY go.mod go.sum ./
 
 # download dependencies
 RUN go mod download
@@ -22,7 +22,7 @@ RUN go mod download
 COPY . .
 
 # create build
-RUN CGO_ENABLED=0 GOOS=linux go build -o bot-build ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o bot-build ./cmd
 
 
 # STAGE 2 copy only build binary from built image

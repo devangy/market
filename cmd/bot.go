@@ -37,10 +37,10 @@ func Bot(tgEventC chan any) {
 	// updates from bot via long polling for testing
 	updates, _ := bot.UpdatesViaLongPolling(ctx, nil)
 
-	// // processing updates one by one
-	// for update := range updates {
-	// 	fmt.Printf("update %v", update)
-	// }
+	// processing updates one by one
+	for update := range updates {
+		fmt.Printf("update %v", update)
+	}
 
 	// bot handler to handle req
 	bh, _ := th.NewBotHandler(bot, updates)
