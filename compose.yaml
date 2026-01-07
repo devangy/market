@@ -2,7 +2,6 @@ services:
     bot:
         build: .
         image: tradeflow:latest
-        # mapping the shell variables into the container
         environment:
             - BOT_TOKEN
             - kalshi_events_API
