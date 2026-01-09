@@ -11,13 +11,13 @@ import (
 	tu "github.com/mymmrac/telego/telegoutil"
 )
 
-func Bot(tgEventC chan any) {
+func Bot(tgEventC <-chan any) {
 
 	botToken := os.Getenv("BOT_TOKEN")
 	if botToken == "" {
 		log.Fatal("Bot token is empty! Set BOT_TOKEN environment variable.")
 	}
-
+	//dddddddddddd
 	// context with a timeout for cancellation of request
 	ctx := context.Background()
 
@@ -31,21 +31,19 @@ func Bot(tgEventC chan any) {
 	if err != nil {
 		log.Fatal("bot authentication: ", err)
 	}
-
+	//deviig
 	log.Debug("Bot user: %+v\n", botUser)
 
 	// updates from bot via long polling for testing
-	updates, _ := bot.UpdatesViaLongPolling(ctx, nil)
-
-	// processing updates one by one
-	for update := range updates {
-		fmt.Printf("update %v", update)
+	updates, err := bot.UpdatesViaLongPolling(ctx, nil)
+	if err != nil {
+		log.Fatal("failed to start long polling:", err)
 	}
 
 	// bot handler to handle req
 	bh, _ := th.NewBotHandler(bot, updates)
 
-	defer bh.Stop()
+	defer func() { _ = bh.Stop() }()
 
 	// Register new handler with match on command `/start`
 	bh.HandleMessage(func(ctx *th.Context, message telego.Message) error {
@@ -62,19 +60,17 @@ func Bot(tgEventC chan any) {
 	// Register new handler with match on a call back query with data equal to `go` and non-nil message
 	bh.HandleCallbackQuery(func(ctx *th.Context, query telego.CallbackQuery) error {
 
+		// Answer callback query
+		_ = bot.AnswerCallbackQuery(ctx, tu.CallbackQuery(query.ID).WithText("Done"))
+
 		for event := range tgEventC {
-			fmt.Print("tgChanEvents", event)
+			fmt.Println("tgChanEvents", event)
 			_, _ = ctx.Bot().SendMessage(ctx, tu.Messagef(
 				tu.ID(query.Message.GetChat().ID),
 				"Received: %v", event,
 			))
 		}
 		// }()
-
-		// _, _ = bot.SendMessage(ctx, tu.Messagef(tu.ID(query.Message.GetChat().ChatID().ID), "e: %s", single))
-
-		// Answer callback query
-		_ = bot.AnswerCallbackQuery(ctx, tu.CallbackQuery(query.ID).WithText("Done"))
 
 		return nil
 

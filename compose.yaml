@@ -9,7 +9,6 @@ services:
             - poly_trades_API
             - poly_walletProfile_API
             - kalshi_trades_API
-        restart: always
         dns:
             - 8.8.8.8
             - 1.1.1.1
