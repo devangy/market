@@ -102,7 +102,7 @@ func Bot(tgEventC chan JData, walletStatsC chan WalletStats) {
 							"<i>AppendTime: %s</i>",
 						wallet.Trader,
 						wallet.Address, // URL part
-						wallet.Address, // visible text part  ✅ THIS WAS MISSING
+						wallet.Address, // visible text part  ✅ THIS WAS MISSINGdd
 						wallet.TotalTrades,
 						wallet.Wins,
 						wallet.Losses,
