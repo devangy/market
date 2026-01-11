@@ -761,7 +761,7 @@ func polyWallet(api string, apiClient *http.Client, tradeWalletC chan Trade, wal
 			// win rate (0–1)
 			winRate := float64(wins) / float64(totalTrades)
 
-			// profit factor check run
+			// profit factor check run das
 			var profitFactor float64
 			if totalLosses == 0 {
 				profitFactor = totalGains
