@@ -101,10 +101,10 @@ func main() {
 	// entryPoint := os.Getenv("entryPoint")
 
 	// Markets
-	// kalshi_events_API := os.Getenv("kalshi_events_API")
+	kalshi_events_API := os.Getenv("kalshi_events_API")
 	poly_events_API := os.Getenv("poly_events_API")
-	// poly_trades_API := os.Getenv("poly_trades_API")
-	// poly_profile_API := os.Getenv("poly_walletProfile_API")
+	poly_trades_API := os.Getenv("poly_trades_API")
+	poly_profile_API := os.Getenv("poly_walletProfile_API")
 	// kalshi_trades_API := os.Getenv("kalshi_trades_API")
 
 	// proxy server provider URL for rotating proxy
@@ -127,15 +127,17 @@ func main() {
 	}
 
 	// channel where both api will send the json
-	events_chan := make(chan any, 10)
+	events_chan := make(chan JData, 10)
 	// // Telegram channel for clean and filtered data according to logic applied
-	tgEventC := make(chan any, 10)
+	tgEventC := make(chan JData, 10)
 	// trade wallet address chan
-	// tradeWalletC := make(chan Trade, 10)
+	tradeWalletC := make(chan Trade, 10)
 
-	go Bot(tgEventC)
+	walletStatsC := make(chan WalletStats, 10)
 
-	// go kalshi(kalshi_events_API, apiClient, events_chan)
+	go Bot(tgEventC, walletStatsC)
+
+	go kalshi(kalshi_events_API, apiClient, events_chan)
 	log.Info("Started Kalshi Events Worker")
 
 	go poly(poly_events_API, apiClient, events_chan)
@@ -144,18 +146,28 @@ func main() {
 	go processEvents(events_chan, tgEventC)
 	log.Info("Started Events Processing Worker")
 
-	// go polyTrades(poly_trades_API, apiClient, tradeWalletC)
-	// log.Info("Started Poly Trades Worker")
+	go polyTrades(poly_trades_API, apiClient, tradeWalletC)
+	log.Info("Started Poly Trades Worker")
 
-	// go polyWallet(poly_profile_API, apiClient, tradeWalletC)
-	// log.Info("Started Poly Trades Worker")
-	// // go kalshiTrades(kalshi_trades_API, apiClient)
+	go polyWallet(poly_profile_API, apiClient, tradeWalletC, walletStatsC)
+	log.Info("Started Poly Trades Worker")
+
+	// go kalshiTrades(kalshi_trades_API, apiClient)
 	// log.Info("Started Kalshi Trades Worker")
 
 	select {}
 }
 
-func kalshi(events_API string, apiClient *http.Client, events_chan chan any) {
+type JData struct {
+	Name         string // "poly" | "kalshi"
+	Title        string
+	Category     string
+	Volume       float64
+	EventTicker  string
+	SeriesTicker string
+}
+
+func kalshi(events_API string, apiClient *http.Client, events_chan chan JData) {
 
 	ticker := time.NewTicker(1 * time.Second)
 
@@ -267,8 +279,15 @@ func kalshi(events_API string, apiClient *http.Client, events_chan chan any) {
 			log.Debug("CursorValue: ", cursor)
 
 			for _, event := range kdata.Events {
-				event.Name = "kalshi"
-				events_chan <- event
+
+				jd := JData{
+					Name:         "kalshi",
+					Title:        event.Title,
+					Category:     event.Category,
+					EventTicker:  event.EventTicker,
+					SeriesTicker: event.SeriesTicker,
+				}
+				events_chan <- jd
 			}
 
 		}()
@@ -277,7 +296,7 @@ func kalshi(events_API string, apiClient *http.Client, events_chan chan any) {
 
 }
 
-func poly(events_api string, apiClient *http.Client, events_chan chan any) {
+func poly(events_api string, apiClient *http.Client, events_chan chan JData) {
 
 	ticker := time.NewTicker(1 * time.Second)
 
@@ -353,15 +372,21 @@ func poly(events_api string, apiClient *http.Client, events_chan chan any) {
 			// }
 
 			for _, event := range pdata {
-				event.Name = "poly"
-				events_chan <- event
+				jd := JData{
+					Name:     "poly",
+					Title:    event.Title,
+					Category: event.Category,
+					Volume:   event.Volume,
+				}
+
+				events_chan <- jd
 			}
 		}()
 	}
 
 }
 
-func processEvents(events_chan chan any, tgEventsC chan any) {
+func processEvents(events_chan chan JData, tgEventsC chan JData) {
 	// get current dir path
 	//
 
@@ -447,7 +472,6 @@ func processEvents(events_chan chan any, tgEventsC chan any) {
 			log.Debug("Duplicate found skipping")
 			continue
 		}
-		<-limiter.C
 
 		// send only fresh data to Tg bot
 		tgEventsC <- jdata
@@ -613,7 +637,22 @@ func polyTrades(api string, apiClient *http.Client, tradeWalletC chan Trade) {
 	}
 }
 
-func polyWallet(api string, apiClient *http.Client, tradeWalletC chan Trade) {
+type WalletStats struct {
+	Trader       string
+	Address      string
+	Wins         int
+	Losses       int
+	WinRate      float64
+	ProfitFactor float64
+	BotFlags     float64
+	Score        float64
+	TotalTrades  int
+	TotalProfit  float64
+	Timestamp    string
+	AppendTime   string
+}
+
+func polyWallet(api string, apiClient *http.Client, tradeWalletC chan Trade, walletStatsC chan WalletStats) {
 	dir, err := os.Getwd()
 	if err != nil {
 		log.Error("polyTrades | Error getting dir path:")
@@ -752,21 +791,6 @@ func polyWallet(api string, apiClient *http.Client, tradeWalletC chan Trade) {
 			unixNow := time.Now().Unix()
 			currentTime := time.Unix(unixNow, 0).Format("02 Jan 15:04")
 
-			type WalletStats struct {
-				Trader       string
-				Address      string
-				Wins         int
-				Losses       int
-				WinRate      float64
-				ProfitFactor float64
-				BotFlags     float64
-				Score        float64
-				TotalTrades  int
-				TotalProfit  float64
-				Timestamp    string
-				AppendTime   string
-			}
-
 			result := WalletStats{
 				Address:      trade.ProxyWallet,
 				Wins:         wins,
@@ -780,6 +804,8 @@ func polyWallet(api string, apiClient *http.Client, tradeWalletC chan Trade) {
 				AppendTime:   currentTime,
 				Trader:       trade.Name,
 			}
+
+			walletStatsC <- result
 
 			data, err := json.MarshalIndent(result, "", "  ")
 			if err != nil {
@@ -799,31 +825,31 @@ func polyWallet(api string, apiClient *http.Client, tradeWalletC chan Trade) {
 
 }
 
-func kalshiTrades(api string, apiClient *http.Client) {
-	ticker := time.NewTicker(150 * time.Millisecond)
+// func kalshiTrades(api string, apiClient *http.Client) {
+// 	ticker := time.NewTicker(150 * time.Millisecond)
 
-	defer ticker.Stop()
+// 	defer ticker.Stop()
 
-	for range ticker.C {
-		go func() {
-			req, err := http.NewRequest("GET", api, nil)
-			if err != nil {
-				log.Error("[kalshiTrades] | GET request: ", err)
-			}
+// 	for range ticker.C {
+// 		go func() {
+// 			req, err := http.NewRequest("GET", api, nil)
+// 			if err != nil {
+// 				log.Error("[kalshiTrades] | GET request: ", err)
+// 			}
 
-			res, err := apiClient.Do(req)
-			if err != nil {
-				log.Error("[kalshiTrades] | GET response: ", err)
-			}
+// 			res, err := apiClient.Do(req)
+// 			if err != nil {
+// 				log.Error("[kalshiTrades] | GET response: ", err)
+// 			}
 
-			defer res.Body.Close()
+// 			defer res.Body.Close()
 
-			body, err := io.ReadAll(res.Body)
-			if err != nil {
-				log.Error("[kalshiTrades] | Parse response body: ", err)
-			}
+// 			body, err := io.ReadAll(res.Body)
+// 			if err != nil {
+// 				log.Error("[kalshiTrades] | Parse response body: ", err)
+// 			}
 
-			log.Debug("ktrades: ", string(body))
-		}()
-	}
-}
+// 			log.Debug("ktrades: ", string(body))
+// 		}()
+// 	}
+// }

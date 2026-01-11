@@ -12,7 +12,7 @@ import (
 	tu "github.com/mymmrac/telego/telegoutil"
 )
 
-func Bot(tgEventC <-chan any) {
+func Bot(tgEventC chan JData, walletStatsC chan WalletStats) {
 
 	botToken := os.Getenv("BOT_TOKEN")
 	if botToken == "" {
@@ -77,80 +77,95 @@ func Bot(tgEventC <-chan any) {
 
 		chatID := query.Message.GetChat().ID
 
-		// for event := range tgEventC {
-
-		// 	fmt.Println("tgChanEvents", event)
-
-		// 	// 3. Send the event to the user
-		// 	_, err := ctx.Bot().SendMessage(ctx, tu.Messagef(
-		// 		tu.ID(chatID),
-		// 		"Received: %v", event,
-		// 	))
-
-		// 	if err != nil {
-		// 		fmt.Printf("Failed to send message: %v\n", err)
-		// 	}
-		// }
-		//
-
-		type polymarketdata struct {
-			Name     string
-			Title    string  `json:"title"`
-			Category string  `json:"category"`
-			Volume   float64 `json:"volume"`
-			Image    string  `json:"image"`
-		}
-
-		type kalsh struct {
-			Name         string
-			Title        string `json:"title"`
-			EventTicker  string `json:"event_ticker"`
-			SeriesTicker string `json:"series_ticker"`
-			Category     string `json:"category"`
-		}
-
 		go func() {
 			bgctx := context.Background()
+
+			go func() {
+				for wallet := range walletStatsC {
+
+					wallet := fmt.Sprintf(
+						"🧠 <b>Smart Wallet Detected</b>\n\n"+
+							"👤 <b>Trader:</b> %s\n\n"+
+							"🏦 <b>Wallet:</b> "+
+							"<a href=\"https://polymarket.com/profile/%s\">%s</a>\n\n"+
+							"📊 <b>Performance</b>\n\n"+
+							"• Trades: <b>%d</b>\n"+
+							"• Wins: <b>%d</b>\n"+
+							"• Losses: <b>%d</b>\n"+
+							"• Win Rate: <b>%.2f%%</b>\n\n"+
+							"💰 <b>Profit</b>\n\n"+
+							"• Total PnL: <b>$%.2f</b>\n"+
+							"• Profit Factor: <b>%.2f</b>\n\n"+
+							"🤖 <b>Bot Risk</b>\n"+
+							"• Bot Flags: <b>%.0f</b>\n\n"+
+							"⭐ <b>Final Score:</b> <b>%.3f</b>\n\n"+
+							"<i>AppendTime: %s</i>",
+						wallet.Trader,
+						wallet.Address, // URL part
+						wallet.Address, // visible text part  ✅ THIS WAS MISSING
+						wallet.TotalTrades,
+						wallet.Wins,
+						wallet.Losses,
+						wallet.WinRate,
+						wallet.TotalProfit,
+						wallet.ProfitFactor,
+						wallet.BotFlags,
+						wallet.Score,
+						wallet.AppendTime,
+					)
+
+					_, err := ctx.Bot().SendMessage(
+						bgctx,
+						tu.Message(tu.ID(chatID), wallet).
+							WithParseMode("HTML"),
+					)
+					if err != nil {
+						log.Error("PolyWallet | Failed to send message:", err)
+					}
+
+				}
+			}()
 
 			for event := range tgEventC {
 
 				var msg string
 
-				switch ev := event.(type) {
+				switch event.Name {
 
-				case polymarketdata:
+				case "poly":
 					// optional guard if you insist on Name
+					log.Debug("msg", msg)
+					//
 
 					msg = fmt.Sprintf(
-						"🟣 <b>Polymarket</b>\n\n"+
-							"📰 <b>Title:</b> %s\n"+
-							"🏷️ <b>Category:</b> %s\n"+
-							"💰 <b>Volume:</b> $%.2f\n",
-						ev.Title,
-						ev.Category,
-						ev.Volume,
+						"🟣 Polymarket\n\n"+
+							"Title: %s\n\n"+
+							"Volume:$%.2f\n\n",
+						event.Title,
+						event.Volume,
 					)
 
-				case kalshi:
+				case "kalshi":
+					log.Debug("msg", msg)
 
 					msg = fmt.Sprintf(
-						"🔵 <b>Kalshi</b>\n\n"+
-							"📰 <b>Title:</b> %s\n"+
-							"🏷️ <b>Category:</b> %s\n"+
-							"🎯 <b>Event Ticker:</b> <code>%s</code>\n"+
-							"📦 <b>Series:</b> <code>%s</code>\n",
-						ev.Title,
-						ev.Category,
-						ev.EventTicker,
-						ev.SeriesTicker,
+						"🔵 Kalshi\n\n"+
+							"Title: %s\n\n"+
+							"Category: %s\n\n"+
+							"Event Ticker: %s\n\n"+
+							"Series: %s\n\n",
+						event.Title,
+						event.Category,
+						event.EventTicker,
+						event.SeriesTicker,
 					)
 
 				default:
-					// unknown type — ignore safely
 					continue
 				}
 
 				if msg == "" {
+					log.Debug("Empty message")
 					continue
 				}
 
@@ -164,7 +179,7 @@ func Bot(tgEventC <-chan any) {
 					log.Error("Failed to send message:", err)
 				}
 
-				time.Sleep(100 * time.Millisecond)
+				time.Sleep(200 * time.Millisecond)
 			}
 		}()
 
