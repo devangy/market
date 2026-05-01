@@ -2,6 +2,12 @@
 
 TradeFlow is a Telegram bot built in Golang with Telego library. It monitors real-time activities across major prediction markets like latest events and tries to track whale wallets or smart traders with good winrate % from past 50 closed trades. This works by long polling multiple APIs from **Polymarket** and **Kalshi** using Golang goroutines and channels for aggregation. When a trader with good winrate is identified the bot sends a message to users instantly via Telegram.
 
+### Demo
+
+
+https://github.com/user-attachments/assets/09945bf5-37cd-46ff-93e0-cba7f66b82e2
+
+
 
 ### What are Prediction Markets?
 
